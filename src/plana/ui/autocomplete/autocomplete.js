@@ -189,6 +189,7 @@ plana.ui.ac.AutoComplete.prototype.createDom = function() {
   input['placeholder'] = this.placeholder_;
 
   this.autoCompleteRenderer_ = new goog.ui.ac.Renderer(container);
+  this.autoCompleteRenderer_.setAutoPosition(true);
 
   this.autoComplete = new goog.ui.ac.AutoComplete(
     this.cachingMatcher, this.autoCompleteRenderer_, this.inputHandler);
@@ -295,27 +296,19 @@ plana.ui.ac.AutoComplete.prototype.exitDocument = function() {
 };
 
 /**
- * This function overrides the super class to resize the container
- * showing autocomplete matches to be of the same width as the
- * input element
- * @param {Element=} opt_parent
- * @override
+ * This function adjust the width of the autocomplete container
+ * to be the same size as the input
+ * @private
  */
-plana.ui.ac.AutoComplete.prototype.render = function(opt_parent) {
-  plana.ui.ac.AutoComplete.superClass_.render.call(this, opt_parent);
-
-  /* resize the suggestion list to be the same width as
-   * the input textbox*/
-  var autoCompleteRenderer = this.autoComplete.getRenderer();
-  //make sure we position the suggestion list properly
-  autoCompleteRenderer.setAutoPosition(true);
-  //make sure the renderer is initialized
-  autoCompleteRenderer.redraw();
-  var renderer = this.componentRenderer;
-  var suggestionContainer = autoCompleteRenderer.getElement();
-  var input = renderer.getInput(this, this.dom_);
-  var inputSize = goog.style.getSize(input);
-  goog.style.setWidth(suggestionContainer, inputSize.width);
+plana.ui.ac.AutoComplete.prototype.setSuggestionListWidth_ = function() {
+  var autoCompleteRenderer = this.autoCompleteRenderer_;
+  if (!autoCompleteRenderer.isVisible()) {
+    var renderer = this.componentRenderer;
+    var input = renderer.getInput(this, this.dom_);
+    var suggestionContainer = autoCompleteRenderer.getElement();
+    var inputSize = goog.style.getSize(input);
+    goog.style.setWidth(suggestionContainer, inputSize.width);
+  }
 };
 
 /**
@@ -422,6 +415,7 @@ plana.ui.ac.AutoComplete.prototype.onUpdate_ = function(e) {
       this.setModel(rowData);
       break;
     case goog.ui.ac.AutoComplete.EventType.SUGGESTIONS_UPDATE:
+      this.setSuggestionListWidth_();
       var state = this.cachingMatcher.getState();
       var renderer = this.autoComplete.getRenderer();
       var dom = this.dom_;
@@ -433,6 +427,7 @@ plana.ui.ac.AutoComplete.prototype.onUpdate_ = function(e) {
             if (notShowing) {
               dom.appendChild(renderer.getElement(), this.fetchingMatchesDom_);
               renderer.show();
+              renderer.reposition();
             }
           }
           if (this.noMatchesDom_ != null &&
@@ -451,6 +446,7 @@ plana.ui.ac.AutoComplete.prototype.onUpdate_ = function(e) {
             if (notShowing) {
               dom.appendChild(renderer.getElement(), this.noMatchesDom_);
               renderer.show();
+              renderer.reposition();
             }
           }
           break;
