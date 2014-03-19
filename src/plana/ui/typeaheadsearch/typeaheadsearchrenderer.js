@@ -38,6 +38,7 @@ goog.inherits(plana.ui.ts.TypeaheadSearchRenerer,
  * @return {!Element}
  */
 plana.ui.ts.TypeaheadSearchRenerer.prototype.createDom = function(dom) {
+  var wrapper = dom.createDom('div');
   var div = dom.createDom('div', {
     'class': 'input-group'
   });
@@ -51,7 +52,8 @@ plana.ui.ts.TypeaheadSearchRenerer.prototype.createDom = function(dom) {
     'class': 'glyphicon glyphicon-search'
   }));
   dom.append(div, input, btnSpan);
-  return div;
+  dom.appendChild(wrapper, div);
+  return wrapper;
 };
 
 /**
@@ -61,9 +63,9 @@ plana.ui.ts.TypeaheadSearchRenerer.prototype.createDom = function(dom) {
  * @return {?Element}
  */
 plana.ui.ts.TypeaheadSearchRenerer.prototype.getInput = function(component, dom) {
-  var div = component.getElement();
-  if (div)
-    return dom.getFirstElementChild(div);
+  var wrapper = component.getElement();
+  if (wrapper)
+    return dom.getFirstElementChild(dom.getFirstElementChild(wrapper));
   return null;
 };
 
@@ -75,8 +77,9 @@ plana.ui.ts.TypeaheadSearchRenerer.prototype.getInput = function(component, dom)
  */
 plana.ui.ts.TypeaheadSearchRenerer.prototype.getSearchButton = function(
   component, dom) {
-  var div = component.getElement();
-  if (div) {
+  var wrapper = component.getElement();
+  if (wrapper) {
+    var div = dom.getFirstElementChild(wrapper);
     var children = dom.getChildren(div);
     return children[1];
   }
