@@ -38,6 +38,8 @@ The JSDoc for this class is [here](http://htmlpreview.github.io/?http://github.c
 
 This class extends the autocomplete class to provide an additional search button that can be used to trigger a fulltext search by adding the 'fullsearch' parameter to server requests.
 
+An event is fired when the fulltext search completed. The event contains the search token, results of the search, as well as an indication of whether the server found any matches.
+
 [Here](http://autocomplete-plana.rhcloud.com/typeaheadsearch.html) is a demo of the class.
 
 The JSDoc for this class is [here](http://htmlpreview.github.io/?http://github.com/plan-a-software/closure-js/blob/master/doc/typeaheadsearch/index.html).
