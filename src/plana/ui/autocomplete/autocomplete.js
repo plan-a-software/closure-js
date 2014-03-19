@@ -306,8 +306,10 @@ plana.ui.ac.AutoComplete.prototype.setSuggestionListWidth_ = function() {
     var renderer = this.componentRenderer;
     var input = renderer.getInput(this, this.dom_);
     var suggestionContainer = autoCompleteRenderer.getElement();
-    var inputSize = goog.style.getSize(input);
-    goog.style.setWidth(suggestionContainer, inputSize.width);
+    if (input && suggestionContainer) {
+      var inputSize = goog.style.getSize(input);
+      goog.style.setWidth(suggestionContainer, inputSize.width);
+    }
   }
 };
 
