@@ -9,6 +9,8 @@ This class is a wrapper around the autocomplete component provided in closure. I
 
 The class also displays 'Loading' and 'No matches found' messages, if a search is in progress or a token does not match anything. A user can configure how these messages are displayed, disable them completely, or provide their own DOM structure to use instead of text messages.
 
+[Here](http://autocomplete-plana.rhcloud.com/autocomplete.html) is a demo of the class.
+
 The JSDoc for this class is [here](http://htmlpreview.github.io/?http://github.com/plan-a-software/closure-js/blob/master/doc/autocomplete/index.html).
 
 ### Dependencies
@@ -35,6 +37,8 @@ The JSDoc for this class is [here](http://htmlpreview.github.io/?http://github.c
 # plana.ui.TypeaheadSearch
 
 This class extends the autocomplete class to provide an additional search button that can be used to trigger a fulltext search by adding the 'fullsearch' parameter to server requests.
+
+[Here](http://autocomplete-plana.rhcloud.com/typeaheadsearch.html) is a demo of the class.
 
 The JSDoc for this class is [here](http://htmlpreview.github.io/?http://github.com/plan-a-software/closure-js/blob/master/doc/typeaheadsearch/index.html).
 
