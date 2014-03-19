@@ -17,6 +17,7 @@
 
  .ac-renderer {
   position: absolute;
+  z-index: 9999;
   min-width: 160px;
   margin-top: 2px;
   padding: 5px 0;

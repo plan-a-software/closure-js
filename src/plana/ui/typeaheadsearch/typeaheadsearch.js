@@ -8,6 +8,7 @@
 goog.provide('plana.ui.ts.TypeaheadSearch');
 
 goog.require('goog.Uri');
+goog.require('goog.array');
 goog.require('goog.events.Event');
 goog.require('goog.events.EventType');
 goog.require('plana.ui.ac.AutoComplete');
@@ -97,13 +98,17 @@ plana.ui.ts.TypeaheadSearch.prototype.onSearch_ = function(e) {
         //no match
         this.dispatchEvent({
           type: plana.ui.ts.TypeaheadSearch.EventType.NO_MATCH,
-          token: tk
+          token: tk,
+          matches: []
         });
       } else {
         //send matches to listeners
         this.dispatchEvent({
           type: plana.ui.ts.TypeaheadSearch.EventType.MATCHES,
-          matches: matches
+          token: tk,
+          matches: goog.array.map(matches, function(m, indx, a) {
+            return m.getData();
+          })
         });
       }
       tk = matches = null;
