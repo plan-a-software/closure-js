@@ -327,6 +327,7 @@ plana.ui.ac.AutoComplete.prototype.focus = function() {
  */
 plana.ui.ac.AutoComplete.prototype.setPlaceholder = function(label) {
   this.placeholder_ = label;
+  var renderer = this.componentRenderer;
   var input = renderer.getInput(this, this.dom_);
   if (input)
     input['placeholder'] = label;
