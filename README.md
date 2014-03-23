@@ -9,40 +9,44 @@ This class is a wrapper around the autocomplete component provided in closure. I
 
 The class also displays 'Loading' and 'No matches found' messages, if a search is in progress or a token does not match anything. A user can configure how these messages are displayed, disable them completely, or provide their own DOM structure to use instead of text messages.
 
-[Here](http://autocomplete-plana.rhcloud.com/autocomplete.html) is a demo of the class.
+[Here](http://plan-a-software.github.io/autocomplete.html) is a demo of the class.
 
-The JSDoc for this class is [here](http://htmlpreview.github.io/?http://github.com/plan-a-software/closure-js/blob/master/doc/autocomplete/index.html).
+The JSDoc for this class is [here](http://plan-a-software.github.io/doc/autocomplete/index.html).
 
 ### Dependencies
 
-* ```goog.Disposable```
+* ```goog.Timer```
 * ```goog.Uri```
 * ```goog.array```
+* ```goog.a11y.aria```
 * ```goog.async.Throttle```
+* ```goog.dom.selection```
 * ```goog.events.BrowserEvent```
 * ```goog.events.Event```
+* ```goog.events.EventHandler```
 * ```goog.events.EventTarget```
 * ```goog.events.EventType```
 * ```goog.events.KeyCodes```
+* ```goog.events.KeyHandler```
 * ```goog.math.Size```
-* ```goog.ui.ac.ArrayMatcher```
+* ```goog.net.XhrIo```
+* ```goog.net.XmlHttpFactory```
+* ```goog.string```
+* ```goog.ui.Component```
 * ```goog.ui.ac.AutoComplete```
 * ```goog.ui.ac.AutoComplete.EventType```
-* ```goog.ui.ac.InputHandler```
-* ```goog.ui.ac.RemoteArrayMatcher```
 * ```goog.ui.ac.Renderer```
 * ```goog.ui.ac.RenderOptions```
-* ```goog.ui.Component```
 
 # plana.ui.TypeaheadSearch
 
-This class extends the autocomplete class to provide an additional search button that can be used to trigger a fulltext search by adding the 'fullsearch' parameter to server requests.
+This class extends the autocomplete class to provide an additional search button that can be used to trigger a fulltext search by adding the 'fulltextsearch' parameter to server requests.
 
 An event is fired when the fulltext search completed. The event contains the search token, results of the search, as well as an indication of whether the server found any matches.
 
-[Here](http://autocomplete-plana.rhcloud.com/typeaheadsearch.html) is a demo of the class.
+[Here](http://plan-a-software.github.io/typeaheadsearch.html) is a demo of the class.
 
-The JSDoc for this class is [here](http://htmlpreview.github.io/?http://github.com/plan-a-software/closure-js/blob/master/doc/typeaheadsearch/index.html).
+The JSDoc for this class is [here](http://plan-a-software.github.io/doc/typeaheadsearch/index.html).
 
 ### Dependencies
 

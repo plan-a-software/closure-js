@@ -15,6 +15,8 @@ Use of this source code is governed by the Apache License, Version 2.0.
   <title>Typeahead Test</title>
   <meta name="description" content="Unit tests for the autocomplete component">
   <meta name="viewport" content="width=device-width">
+
+  <!-- include the relevant style sheets from google closure -->
   <link rel="stylesheet" href="../../../css/autocomplete.css">
 </head>
 
@@ -34,10 +36,6 @@ Use of this source code is governed by the Apache License, Version 2.0.
   goog.require('goog.testing.events');
   goog.require('goog.testing.jsunit');
   goog.require('goog.testing.net.XhrIo');
-  goog.require('goog.ui.ac.InputHandler');
-  goog.require('goog.ui.ac.Renderer');
-  goog.require('goog.ui.ac.RemoteArrayMatcher');
-  goog.require('goog.ui.ac.CachingMatcher');
   goog.require('goog.ui.Component');
   </script>
 
@@ -79,7 +77,9 @@ Use of this source code is governed by the Apache License, Version 2.0.
   };
 
   var lastUri;
-
+  var sendDelay = 300;
+  var timerId = null;
+  var sendInvalidResponse = false;
   MockXmlHttp.prototype.readyState = goog.net.XmlHttp.ReadyState.UNINITIALIZED;
 
   MockXmlHttp.prototype.status = 200;
@@ -98,8 +98,7 @@ Use of this source code is governed by the Apache License, Version 2.0.
 
   };
 
-  var sendDelay = 0;
-  var timerId = null;
+
   MockXmlHttp.prototype.complete = function() {
     this.readyState = goog.net.XmlHttp.ReadyState.LOADING;
     this.onreadystatechange();
@@ -127,18 +126,32 @@ Use of this source code is governed by the Apache License, Version 2.0.
     lastUri = uri;
   };
 
-  MockXmlHttp.prototype.abort = function() {};
+  MockXmlHttp.prototype.abort = function() {
+    if(timerId) {
+      window.clearTimeout(timerId);
+      timerId = null;
+    }
+  };
 
   MockXmlHttp.prototype.setRequestHeader = function(key, value) {
     this.headers[key] = value;
   };
 
   MockXmlHttp.prototype.getResponseJson = function(opt_xssiPrefix) {
-    var uri = new goog.Uri(lastUri);
-    var query = uri.getQueryData();
+    //var uri = new goog.Uri(lastUri);
+    var query = new goog.Uri.QueryData(this.content);
     var filterStrings = query.get('token').split(',');
+    var useMultiple = query.get('multi') == 1;
+    if (!useMultiple) {
+      var str = filterStrings.shift();
+      if (str)
+        filterStrings = [str];
+      else
+        filterStrings = [];
+    }
     var matches = [];
     for (var i = 0, str; str = filterStrings[i]; ++i) {
+      str = goog.string.trim(str);
       for (var o = 0, obj; obj = mockServerObjects[o]; ++o) {
         if (goog.string.contains(obj.caption, str) ||
           goog.string.caseInsensitiveCompare(obj.caption, str) == 0) {
@@ -152,6 +165,8 @@ Use of this source code is governed by the Apache License, Version 2.0.
         }
       }
     }
+    if (sendInvalidResponse)
+      return null;
     return goog.json.serialize(matches);
   };
 
@@ -167,18 +182,52 @@ Use of this source code is governed by the Apache License, Version 2.0.
   </script>
 
   <script type="text/javascript">
-  var testCase = goog.testing.AsyncTestCase.createAndInstall('autocomplete');
+  var testCase;
+  var asyncCallbacks = [];
   var asyncTimer = null;
   var autocomplete = null;
+  var inputId = 'myinput';
   var loadingImg = goog.dom.createDom('img', {
     'src': '/alternative/img/ajax-loader.gif'
   });
 
-  function setUp() {
-    sendDelay = 0;
-    autocomplete = new plana.ui.ac.AutoComplete(new goog.Uri('fuchs'));
+  function createAutoComplete(multi) {
+    autocomplete = new plana.ui.ac.AutoComplete(new goog.Uri('fuchs'), multi, null, inputId);
     autocomplete.setLoadingContent(loadingImg);
     autocomplete.render(document.getElementById('container'));
+  }
+
+  var callAsync = function() {
+    var wait = function() {
+      asyncTimer = null;
+      if (lastMockXmlHttp &&
+        lastMockXmlHttp.readyState == goog.net.XmlHttp.ReadyState.COMPLETE) {
+        testCase.continueTesting();
+        var next = asyncCallbacks.shift();
+        if (next)
+          next();
+      } else {
+        asyncTimer = window.setTimeout(wait, 100);
+      }
+    };
+    testCase.waitForAsync('waiting for aync');
+    wait();
+  };
+
+  function setToken(token, full) {
+    autocomplete.autoComplete.setToken(token, full);
+    var input = document.getElementById(inputId);
+    input.value = goog.isDefAndNotNull(full)? full:token;
+  }
+  </script>
+
+  <script type="text/javascript">
+  testCase = goog.testing.AsyncTestCase.createAndInstall('autocomplete');
+
+  function setUp() {
+    sendDelay = 0;
+    sendInvalidResponse = false;
+    MockXmlHttp.prototype.status = 200;
   }
 
   function tearDown() {
@@ -190,157 +239,131 @@ Use of this source code is governed by the Apache License, Version 2.0.
       window.clearTimeout(asyncTimer);
       asyncTimer = null;
     }
+    asyncCallbacks.length = 0;
     if (autocomplete != null)
       autocomplete.dispose();
     autocomplete = null;
   }
 
-  function waitForRequest(done) {
-    asyncTimer = null;
-    if (lastMockXmlHttp &&
-      lastMockXmlHttp.readyState == goog.net.XmlHttp.ReadyState.COMPLETE) {
-      var parent = goog.dom.getParentElement(autocomplete.fetchingMatchesDom_);
-      if (parent == null) {
-        testCase.continueTesting();
-        done();
-        return;
-      }
-    }
-    asyncTimer = window.setTimeout(function() {
-      waitForRequest(done);
-    }, 100);
-  }
-
-  function getInput() {
-    return autocomplete.getRenderer().getInput(autocomplete, goog.dom.getDomHelper());
-  }
-
-  function setToken(token) {
-    autocomplete.autoComplete.setToken(token);
-    var input = getInput();
-    input.value = token;
-  }
-
-  function testNotificationRows() {
-    var parent;
-    var checkResponse = function() {
-      //assert no match found message is showing
-      parent = goog.dom.getParentElement(autocomplete.noMatchesDom_);
-      assertTrue('no match hidden', parent != null && autocomplete.autoComplete.getRenderer().isVisible());
-
-      var checkNoMatch = function() {
-        //assert no match found message is hidden
-        parent = goog.dom.getParentElement(autocomplete.noMatchesDom_);
-        assertNull('no match showing', parent);
-      };
-
-      autocomplete.autoComplete.setToken('hel');
-      testCase.waitForAsync('waiting for server');
-      waitForRequest(checkNoMatch);
+  function testCommaInputOnNonMultiple() {
+    createAutoComplete(false);
+    var checkServerToken = function() {
+      var content = decodeURIComponent(lastMockXmlHttp.content);
+      assertTrue('incorrect token', goog.string.contains(content, 'token=hello,world'));
     };
-    sendDelay = 500;
-    autocomplete.autoComplete.setToken('x');
-    testCase.waitForAsync('waiting for server');
-    waitForRequest(checkResponse);
-    //assert that the loading div is showing
-    parent = goog.dom.getParentElement(autocomplete.fetchingMatchesDom_);
-    assertNotNull('loading not shwowing', parent);
+    asyncCallbacks.push(checkServerToken);
+    setToken('hello,world');
+    callAsync();
   }
 
-  function testFocus() {
-    autocomplete.focus();
-    assertEquals('input is not focused',
-      getInput(),
-      document.activeElement);
+  function testServerErrorWithNoCacheMatch() {
+    MockXmlHttp.prototype.status = 500;
+    createAutoComplete(false);
+    var checkNoSuggestions = function() {
+      var renderer = autocomplete.getAutoComplete().getRenderer();
+      assertFalse('should not be showing anything upon server error', renderer.isVisible());
+    };
+    asyncCallbacks.push(checkNoSuggestions);
+    setToken('x');
+    callAsync();
+  }
+
+  function testServerErrorWithCacheMatch() {
+    createAutoComplete(false);
+    var waitForCache = function() {
+      var renderer = autocomplete.getAutoComplete().getRenderer();
+      assertTrue('should be showing hello matches', renderer.isVisible());
+      assertEquals('showing only one match', 1, autocomplete.getAutoComplete().getRowCount());
+
+      MockXmlHttp.prototype.status = 500;
+      setToken('h');
+      callAsync();
+    };
+    var checkCachedSuggestions = function() {
+      var renderer = autocomplete.getAutoComplete().getRenderer();
+      assertTrue('should still be showing cached hello matches', renderer.isVisible());
+      assertEquals('showing be showing cached match', 1, autocomplete.getAutoComplete().getRowCount());
+    };
+    asyncCallbacks.push(waitForCache);
+    asyncCallbacks.push(checkCachedSuggestions);
+    setToken('hel');
+    callAsync();
+  }
+
+  function testLoadingNotification() {
+    createAutoComplete(false);
+    sendDelay = 100;
+    var _id;
+    var loadingChecked = false;
+    _id = window.setTimeout(function() {
+      var renderer = autocomplete.getAutoComplete().getRenderer();
+      assertTrue('should be showing loading message', renderer.isVisible());
+      loadingChecked = true;
+      _id = null;
+    }, 20);
+    var checkLoadingFlag = function() {
+      if (_id)
+        window.clearTimeout(_id);
+      assertTrue('did not show loading message', loadingChecked);
+    };
+    asyncCallbacks.push(checkLoadingFlag);
+    setToken('hel');
+    callAsync();
+  }
+
+  function testNoMatchNotification() {
+    createAutoComplete(false);
+    var checkNoMatch = function() {
+      var renderer = autocomplete.getAutoComplete().getRenderer();
+      var children = goog.dom.getChildren(renderer.getElement());
+      assertEquals('showing no match message', 1, children.length);
+      assertEquals('showing no matches', 0, autocomplete.getAutoComplete().getRowCount());
+    };
+    asyncCallbacks.push(checkNoMatch);
+    setToken('x');
+    callAsync();
+  }
+  
+  function testSetModelWithMultiInput() {
+    createAutoComplete(true);
+    var checkModel = function() {
+      assertEquals('showing wrong num matches', 1, autocomplete.getAutoComplete().getRowCount());
+      var model = autocomplete.getModel();
+      assertEquals('model should be empty array', 0, model.length);
+      var nonmatches = autocomplete.getNonMatches();
+      assertEquals('should have 2 non matches', 2, nonmatches.length);
+      assertArrayEquals('non match content', ['hello', 'w'], nonmatches);
+      //select suggestion
+      var input = document.getElementById(inputId);
+      goog.testing.events.fireKeySequence(input, goog.events.KeyCodes.ENTER);
+      model = autocomplete.getModel();
+      assertNotNull('model should now exist', model);
+      assertEquals('model should have 1 item', 1, model.length);
+      assertEquals('model id should be 2', 2, model[0].id);
+      assertEquals('model caption should be world', 'world', model[0].caption);
+    };
+    asyncCallbacks.push(checkModel);
+    setToken('world', 'hello,w');
+    callAsync();
   }
 
   function testSetModel() {
-    var cbList = [];
-    var sendNonMatchingKey = function() {
-      var onKeyProcessed = function() {
-        //hit enter
-        goog.testing.events.fireKeySequence(getInput(), goog.events.KeyCodes.ENTER);
-        //assert model is set to null
-        assertNull('model incorrectly set to non null', autocomplete.getModel());
-        var nextCb = cbList.shift();
-        if (nextCb)
-          nextCb();
-      };
-      autocomplete.autoComplete.setToken('x');
-      testCase.waitForAsync('waiting for server');
-      waitForRequest(onKeyProcessed);
-    };
-    var sendMatchingStrKey = function() {
-      var onKeyProcessed = function() {
-        //hit enter
-        goog.testing.events.fireKeySequence(getInput(), goog.events.KeyCodes.ENTER);
-        //assert model is set to null
-        assertEquals('model should be coding', 'coding', autocomplete.getModel());
-        var nextCb = cbList.shift();
-        if (nextCb)
-          nextCb();
-      };
-      autocomplete.autoComplete.setToken('coding');
-      testCase.waitForAsync('waiting for server');
-      waitForRequest(onKeyProcessed);
-    };
-    var sendMatchingObjKey = function() {
-      var onKeyProcessed = function() {
-        //hit enter
-        goog.testing.events.fireKeySequence(getInput(), goog.events.KeyCodes.ENTER);
-        //assert model is set to null
-        var model = autocomplete.getModel();
-        assertEquals('model should be hello', 'hello', model.caption);
-        assertEquals('model id should be 1', 1, model.id);
-        var nextCb = cbList.shift();
-        if (nextCb)
-          nextCb();
-      };
-      autocomplete.autoComplete.setToken('hello');
-      testCase.waitForAsync('waiting for server');
-      waitForRequest(onKeyProcessed);
-    };
+    autocomplete = new plana.ui.ac.AutoComplete(new goog.Uri('fuchs'), false, null, inputId);
+    autocomplete.setLoadingContent(loadingImg);
+    autocomplete.setModel('x games');
+    autocomplete.render(document.getElementById('container'));
+    var input = autocomplete.getInputHandler().getInput();
+    assertEquals('input init didnt work', 'x games', input.value);
 
-    //send non matching key and expect model to be null
-    //send matching key and expect model to be string
-    //send matching key and expect model to be object
-    //send non matching key and expect model to be null
-    cbList = [sendMatchingStrKey, sendMatchingObjKey, sendNonMatchingKey];
-    sendNonMatchingKey();
-  }
+    autocomplete.dispose();
 
-  function testEmptyToken() {
-    //the empty token should hide the list and not show any
-    //loading or no match messages
-    var parent;
-    var onKeyProcessed = function() {
-      //hit enter
-      goog.testing.events.fireKeySequence(getInput(), goog.events.KeyCodes.ENTER);
-
-      //assert no match is showing
-      parent = goog.dom.getParentElement(autocomplete.noMatchesDom_);
-      assertTrue('no match hidden', parent != null && autocomplete.autoComplete.getRenderer().isVisible());
-
-      //delete x
-      //goog.testing.events.fireKeySequence(getInput(), goog.events.KeyCodes.BACKSPACE);
-      setToken('xx');
-      //make sure we fire server request
-      autocomplete.cachingMatcher.throttledTriggerBaseMatch_.doAction_();
-      //now quickly set the input to an empty string...this should mean
-      //when the server request returns, the no-match will be hidden
-      setToken('');
-
-      var onDelete = function() {
-        parent = goog.dom.getParentElement(autocomplete.noMatchesDom_);
-        assertTrue('no match showing', parent == null && !autocomplete.autoComplete.getRenderer().isVisible());
-      };
-
-      testCase.waitForAsync('waiting for server');
-      waitForRequest(onDelete);
-    };
-    setToken('x');
-    testCase.waitForAsync('waiting for server');
-    waitForRequest(onKeyProcessed);
+    //now try with multi input
+    autocomplete = new plana.ui.ac.AutoComplete(new goog.Uri('fuchs'), true, null, inputId);
+    autocomplete.setLoadingContent(loadingImg);
+    autocomplete.setModel('x games');
+    autocomplete.render(document.getElementById('container'));
+    var input = autocomplete.getInputHandler().getInput();
+    assertEquals('input init didnt work', 'x games, ', input.value);
   }
   </script>
 </body>

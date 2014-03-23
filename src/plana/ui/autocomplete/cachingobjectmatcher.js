@@ -17,14 +17,20 @@
 'use strict';
 
 goog.provide('plana.ui.ac.CachingObjectMatcher');
-goog.require('goog.Disposable');
+
+goog.require('goog.Uri');
 goog.require('goog.array');
 goog.require('goog.async.Throttle');
-goog.require('goog.events');
-goog.require('goog.ui.ac.ArrayMatcher');
+goog.require('goog.events.EventHandler');
+goog.require('goog.events.EventTarget');
+goog.require('goog.net.XhrIo');
+goog.require('goog.net.XmlHttpFactory');
+goog.require('goog.string');
 goog.require('goog.ui.ac.RenderOptions');
 goog.require('plana.ui.ac.RemoteObject');
 goog.require('plana.ui.ac.RemoteObjectMatcher');
+goog.require('plana.ui.ac.RemoteObjectMatcher.Event');
+goog.require('plana.ui.ac.RemoteObjectMatcher.EventType');
 
 /**
  * This class is based on {@link goog.ui.ac.CachingMatcher}. It differs
@@ -37,16 +43,22 @@ goog.require('plana.ui.ac.RemoteObjectMatcher');
  *    * no matches found
  *
  * @constructor
- * @extends {goog.events.EventTarget}
- * @param {string} url The url of the server that returns autocomplete matches.
- *     The search term is passed to the server as the 'token' query param
+ * @extends {goog.events.EventHandler}
+ * @param {goog.Uri} uri The uri which generates the auto complete matches. The
+ *     search term is passed to the server as the 'token' query param
+ * @param {goog.net.XhrIo=} opt_xhrIo Optional XhrIo object to use. By default
+ *     we create a new instance
+ * @param {goog.net.XmlHttpFactory=} opt_xmlHttpFactory Optional factory to use
+ *     when creating XMLHttpRequest objects
+ * @param {boolean=} opt_multi Whether to allow multiple entries
  * @param {boolean=} opt_noSimilar If true, request that the server does not do
  *     similarity matches for the input token against the dictionary
  *     The value is sent to the server as the 'use_similar' query param which is
  *     either "1" (opt_noSimilar==false) or "0" (opt_noSimilar==true)
  */
-plana.ui.ac.CachingObjectMatcher = function(url, opt_noSimilar) {
-  goog.Disposable.call(this);
+plana.ui.ac.CachingObjectMatcher = function(
+  uri, opt_xhrIo, opt_xmlHttpFactory, opt_multi, opt_noSimilar) {
+  goog.events.EventHandler.call(this);
 
   /**
    * The client side cache
@@ -78,7 +90,8 @@ plana.ui.ac.CachingObjectMatcher = function(url, opt_noSimilar) {
    * @private
    */
   this.remoteMatcher_ =
-    new plana.ui.ac.RemoteObjectMatcher(url, opt_noSimilar);
+    new plana.ui.ac.RemoteObjectMatcher(uri, opt_xhrIo,
+      opt_xmlHttpFactory, opt_multi, opt_noSimilar);
 
   /**
    * Number of matches to request from the remote
@@ -103,6 +116,14 @@ plana.ui.ac.CachingObjectMatcher = function(url, opt_noSimilar) {
    * @private
    */
   this.mostRecentToken_ = '';
+
+  /**
+   * The complete input string, including the token.
+   * This is useful for inputs that allow multiple entries
+   * @type {string}
+   * @private
+   */
+  this.mostRecentString_ = '';
 
   /**
    * The handler to use for handling matches returned by
@@ -144,20 +165,31 @@ plana.ui.ac.CachingObjectMatcher = function(url, opt_noSimilar) {
   this.currentState_ = plana.ui.ac.CachingObjectMatcher.State.READY;
 
   /**
-   * The function to handle matches returned from the server. The function
-   * has 'this' bound
-   * @type {function}
+   * Flag whether we should add matches to the local cache or not
+   * @type {boolean}
    * @private
    */
-  this.remoteMatchCb_ = goog.bind(this.onRemoteMatch_, this);
+  this.disableLocalCache_ = false;
+
+  //listen to matcher events
+  this.listen(this.remoteMatcher_, [
+    plana.ui.ac.RemoteObjectMatcher.EventType.FAILED_REQUEST,
+    plana.ui.ac.RemoteObjectMatcher.EventType.MATCHES,
+    plana.ui.ac.RemoteObjectMatcher.EventType.INVALID_RESPONSE
+  ], this.onRemoteMatcherEvent_, false, this);
 };
-goog.inherits(plana.ui.ac.CachingObjectMatcher, goog.Disposable);
+goog.inherits(plana.ui.ac.CachingObjectMatcher, goog.events.EventHandler);
 
 /**
  * @override
  */
 plana.ui.ac.CachingObjectMatcher.prototype.disposeInternal = function() {
-  plana.ui.ac.CachingObjectMatcher.superClass_.disposeInternal.call(this);
+  this.unlisten(this.remoteMatcher_, [
+    plana.ui.ac.RemoteObjectMatcher.EventType.FAILED_REQUEST,
+    plana.ui.ac.RemoteObjectMatcher.EventType.MATCHES,
+    plana.ui.ac.RemoteObjectMatcher.EventType.INVALID_RESPONSE
+  ], this.onRemoteMatcherEvent_, false, this);
+
   for (var i = 0, match; match = this.rows_[i]; ++i) {
     match.dispose();
   }
@@ -171,12 +203,27 @@ plana.ui.ac.CachingObjectMatcher.prototype.disposeInternal = function() {
   this.throttledTriggerBaseMatch_.dispose();
   this.throttledTriggerBaseMatch_ = null;
   this.mostRecentToken_ = null;
+  this.mostRecentString_ = null;
   this.mostRecentMatchHandler_ = null;
   this.cacheMaxMatches_ = null;
   this.mostRecentMatches_.length = 0;
   this.mostRecentMatches_ = null;
   this.currentState_ = null;
-  this.remoteMatchCb_ = null;
+  this.disableLocalCache_ = null;
+  plana.ui.ac.CachingObjectMatcher.superClass_.disposeInternal.call(this);
+};
+
+/**
+ * This function returns true on non-empty strings and if fullstring isn't
+ * empty, but token might be. Otherwise returns false
+ * @param {string} token Current token in autocomplete
+ * @param {string} fullstring The complete value of the autocomplete
+ *     input
+ * @return {boolean} Whether new matches be requested
+ */
+plana.ui.ac.CachingObjectMatcher.prototype.shouldRequestMatches = function(
+  token, fullstring) {
+  return !goog.string.isEmptySafe(token);
 };
 
 /**
@@ -229,16 +276,15 @@ plana.ui.ac.CachingObjectMatcher.prototype.setMaxCacheSize = function(
  *
  * @param {string} token Token to match
  * @param {number} maxMatches Max number of matches to return
- * @param {!Array.<plana.ui.ac.RemoteObject>} rows Rows to search for matches
  * @return {!Array.<plana.ui.ac.RemoteObject>} Rows that match
  */
 plana.ui.ac.CachingObjectMatcher.prototype.getCachedMatches = function(
-  token, maxMatches, rows) {
+  token, maxMatches) {
   var matches =
-    this.getPrefixMatchesForRows(token, maxMatches, rows);
+    this.getPrefixMatchesForRows(token, maxMatches);
 
   if (matches.length == 0) {
-    matches = this.getSimilarMatchesForRows(token, maxMatches, rows);
+    matches = this.getSimilarMatchesForRows(token, maxMatches);
   }
   return matches;
 };
@@ -248,19 +294,21 @@ plana.ui.ac.CachingObjectMatcher.prototype.getCachedMatches = function(
  * matches the token against the start of words in the row
  * @param {string} token Token to match
  * @param {number} maxMatches Max number of matches to return
- * @param {!Array.<plana.ui.ac.RemoteObject>} rows Rows to search for matches
  * @return {!Array.<plana.ui.ac.RemoteObject>} Rows that match
  */
 plana.ui.ac.CachingObjectMatcher.prototype.getPrefixMatchesForRows = function(
-  token, maxMatches, rows) {
+  token, maxMatches) {
   var matches = [];
 
   if (!goog.string.isEmptySafe(token)) {
     var escapedToken = goog.string.regExpEscape(token);
     var matcher = new RegExp('(^|\\W+)' + escapedToken, 'i');
 
-    for (var i = 0, row; row = rows[i] && matches.length < maxMatches; ++i) {
+    var matchCount = 0;
+    for (var i = 0, row;
+      (row = this.rows_[i]) && matchCount < maxMatches; ++i) {
       if (row.toString().match(matcher)) {
+        matchCount++;
         matches.push(row);
       }
     }
@@ -274,14 +322,13 @@ plana.ui.ac.CachingObjectMatcher.prototype.getPrefixMatchesForRows = function(
  * terms
  * @param {string} token Token to match
  * @param {number} maxMatches Max number of matches to return
- * @param {!Array.<plana.ui.ac.RemoteObject>} rows Rows to search for matches
  * @return {!Array.<plana.ui.ac.RemoteObject>} The best maxMatches rows
  */
 plana.ui.ac.CachingObjectMatcher.prototype.getSimilarMatchesForRows = function(
-  token, maxMatches, rows) {
+  token, maxMatches) {
   var results = [];
 
-  for (var index = 0, row; row = rows[index]; ++index) {
+  for (var index = 0, row; row = this.rows_[index]; ++index) {
     var str = token.toLowerCase();
     var txt = row.toString().toLowerCase();
     var score = 0;
@@ -346,15 +393,18 @@ plana.ui.ac.CachingObjectMatcher.prototype.getSimilarMatchesForRows = function(
  * @param {string} token Token to match
  * @param {number} maxMatches Max number of matches to return
  * @param {Function} matchHandler callback to execute after matching
+ * @param {string=} opt_fullstring The complete string in the input
+ *     textbox
  */
 plana.ui.ac.CachingObjectMatcher.prototype.requestMatchingRows =
-  function(token, maxMatches, matchHandler) {
+  function(token, maxMatches, matchHandler, opt_fullstring) {
 
     this.cacheMaxMatches_ = maxMatches;
     this.mostRecentToken_ = token;
     this.mostRecentMatchHandler_ = matchHandler;
+    this.mostRecentString_ = opt_fullstring || '';
 
-    var fetching = this.remoteMatcher_.shouldRequestMatches(null, token);
+    var fetching = this.shouldRequestMatches(token, this.mostRecentString_);
     if (fetching) {
       this.currentState_ = plana.ui.ac.CachingObjectMatcher.State.FETCHING;
     } else {
@@ -363,7 +413,7 @@ plana.ui.ac.CachingObjectMatcher.prototype.requestMatchingRows =
 
     this.throttledTriggerBaseMatch_.fire();
 
-    var matches = this.getCachedMatches(token, maxMatches, this.rows_);
+    var matches = this.getCachedMatches(token, maxMatches);
 
     matchHandler(token, matches);
     this.mostRecentMatches_ = matches;
@@ -376,15 +426,17 @@ plana.ui.ac.CachingObjectMatcher.prototype.requestMatchingRows =
  * @param {!Array.<!plana.ui.ac.RemoteObject>} rows
  * @private
  */
-plana.ui.ac.CachingObjectMatcher.prototype.addRows_ = function(rows) {
-  goog.array.forEach(rows, function(row) {
-    var str = row.toString();
-    // The ' ' prefix is to avoid colliding with builtins like toString.
-    if (!this.rowStrings_[' ' + str]) {
-      this.rows_.push(row);
-      this.rowStrings_[' ' + str] = true;
-    }
-  }, this);
+plana.ui.ac.CachingObjectMatcher.prototype.addRowsToCache_ = function(rows) {
+  if (!this.disableLocalCache_) {
+    goog.array.forEach(rows, function(row) {
+      var str = row.toString();
+      // The ' ' prefix is to avoid colliding with builtins like toString.
+      if (!this.rowStrings_[' ' + str]) {
+        this.rows_.push(row);
+        this.rowStrings_[' ' + str] = true;
+      }
+    }, this);
+  }
 };
 
 
@@ -394,11 +446,7 @@ plana.ui.ac.CachingObjectMatcher.prototype.addRows_ = function(rows) {
  */
 plana.ui.ac.CachingObjectMatcher.prototype.clearCacheIfTooLarge_ = function() {
   if (this.rows_.length > this.maxCacheSize_) {
-    for (var i = 0, match; match = this.rows_[i]; ++i) {
-      match.dispose();
-    }
-    this.rows_.length = 0;
-    this.rowStrings_ = {};
+    this.clearCache();
   }
 };
 
@@ -411,69 +459,74 @@ plana.ui.ac.CachingObjectMatcher.prototype.clearCacheIfTooLarge_ = function() {
  * @private
  */
 plana.ui.ac.CachingObjectMatcher.prototype.triggerBaseMatch_ = function() {
-  this.remoteMatcher_.requestMatchingRows(this.mostRecentToken_,
-    this.remoteMatcherMaxMatches_, this.remoteMatchCb_);
+  this.remoteMatcher_.requestMatches(
+    this.mostRecentToken_,
+    this.remoteMatcherMaxMatches_,
+    this.mostRecentString_);
 };
 
-
 /**
- * This function is adapted from {@link goog.ui.ac.CachingMatcher}.
- * Handles a match response from the base matcher
- * @param {string} token The token against which the base match was called.
- * @param {!Array.<!plana.ui.ac.RemoteObject>} matches The matches returned by
- *       the base matcher
+ * Callback for events dispatched by the remote matcher. This function adds
+ * results to cached results and calls the match handler to update the list
+ * of matches
+ * @param {plana.ui.ac.RemoteObjectMatcher.Event} e The event object dispatched
+ *     by the remote matcher object
  * @private
  */
-plana.ui.ac.CachingObjectMatcher.prototype.onRemoteMatch_ = function(
-  token, matches) {
-  // NOTE(reinerp): The user might have typed some more characters since the
-  // base matcher request was sent out, which manifests in that token might be
-  // older than this.mostRecentToken_. We make sure to do our local matches
-  // using this.mostRecentToken_ rather than token so that we display results
-  // relevant to what the user is seeing right now
-
-  // NOTE(reinerp): We compute a diff between the currently displayed results
-  // and the new results we would get now that the server results have come
-  // back. Using this diff, we make sure the new results are only added to the
-  // end of the list of results. See the documentation on
-  // this.mostRecentMatches_ for details
-  this.addRows_(matches);
-
-  var oldMatchesSet = {};
-  for (var i = 0, match; match = this.mostRecentMatches_[i]; ++i) {
-    // The ' ' prefix is to avoid colliding with builtins like toString.
-    oldMatchesSet[' ' + match.toString()] = true;
-  }
-
-  var newMatches = this.getCachedMatches(this.mostRecentToken_,
-    this.cacheMaxMatches_, this.rows_);
-
-  newMatches = goog.array.filter(newMatches, function(match) {
-    return !(oldMatchesSet[' ' + match.toString()]);
-  });
-
-  newMatches = this.mostRecentMatches_.concat(newMatches).slice(0,
-    this.cacheMaxMatches_);
-
-  this.mostRecentMatches_ = newMatches;
-
-  // We've gone to the effort of keeping the existing rows as before, so let's
-  // make sure to keep them highlighted.
+plana.ui.ac.CachingObjectMatcher.prototype.onRemoteMatcherEvent_ = function(e) {
+  // make sure to keep existing rows highlighted.
   var options = new goog.ui.ac.RenderOptions();
   options.setPreserveHilited(true);
 
-  var fetched =
-    this.remoteMatcher_.shouldRequestMatches(null, this.mostRecentToken_);
-  if (newMatches.length == 0 && fetched)
-    this.currentState_ = plana.ui.ac.CachingObjectMatcher.State.NO_MATCH;
-  else
-    this.currentState_ = plana.ui.ac.CachingObjectMatcher.State.READY;
+  switch (e.type) {
+    case plana.ui.ac.RemoteObjectMatcher.EventType.MATCHES:
+      var matches = e.matches;
+      this.addRowsToCache_(matches);
 
-  this.mostRecentMatchHandler_(this.mostRecentToken_, newMatches, options);
+      //mostRecentMatches_ contains the matches shown from cache
+      var oldMatchesSet = {};
+      for (var i = 0, match; match = this.mostRecentMatches_[i]; ++i) {
+        // The ' ' prefix is to avoid colliding with builtins like toString.
+        oldMatchesSet[' ' + match.toString()] = true;
+      }
 
-  // We clear the cache *after* running the local match, so we don't
-  // suddenly remove results just because the remote match came back.
-  this.clearCacheIfTooLarge_();
+      var newMatches = goog.array.filter(matches, function(match) {
+        return !(oldMatchesSet[' ' + match.toString()]);
+      });
+
+      /*combine cached matches and server matches and cut the server
+       *matches to the cacheMaxMatches */
+      this.mostRecentMatches_ =
+        this.mostRecentMatches_.concat(newMatches).
+      slice(0, this.cacheMaxMatches_);
+
+      var fetched = this.shouldRequestMatches(
+        this.mostRecentToken_,
+        this.mostRecentString_);
+      if (fetched &&
+        this.mostRecentMatches_.length == 0)
+        this.currentState_ = plana.ui.ac.CachingObjectMatcher.State.NO_MATCH;
+      else
+        this.currentState_ = plana.ui.ac.CachingObjectMatcher.State.READY;
+
+      this.mostRecentMatchHandler_(this.mostRecentToken_,
+        this.mostRecentMatches_, options);
+
+      // We clear the cache *after* running the local match, so we don't
+      // suddenly remove results just because the remote match came back.
+      this.clearCacheIfTooLarge_();
+      break;
+    case plana.ui.ac.RemoteObjectMatcher.EventType.FAILED_REQUEST:
+    case plana.ui.ac.RemoteObjectMatcher.EventType.INVALID_RESPONSE:
+      this.currentState_ = plana.ui.ac.CachingObjectMatcher.State.ERROR;
+      //show cached items if we have any...
+      //maybe notify listeners somehow of error to show an error
+      this.mostRecentMatchHandler_(this.mostRecentToken_,
+        this.mostRecentMatches_, options);
+      break;
+    default:
+      throw 'Invalid remote event type:' + e.type;
+  }
 };
 
 /**
@@ -495,6 +548,27 @@ plana.ui.ac.CachingObjectMatcher.prototype.getRemoteMatcher = function() {
 };
 
 /**
+ * This function clears the cache
+ */
+plana.ui.ac.CachingObjectMatcher.prototype.clearCache = function() {
+  for (var i = 0, match; match = this.rows_[i]; ++i) {
+    match.dispose();
+  }
+  this.rows_.length = 0;
+  this.rowStrings_ = {};
+};
+
+/**
+ * Setter to disable the local cache. If disabled, matches returned by the
+ * server will not be stored locally
+ * @param {boolean} disable The value to set
+ */
+plana.ui.ac.CachingObjectMatcher.prototype.disableLocalCache = function(
+  disable) {
+  this.disableLocalCache_ = disable;
+};
+
+/**
  * List of events dispatched by the cache manager
  * @enum {!number}
  */
@@ -513,5 +587,11 @@ plana.ui.ac.CachingObjectMatcher.State = {
    * @desc This state indicates that matches
    * have been returned by the server
    */
-  READY: 2
+  READY: 2,
+  /**
+   * @desc This state indicates that the remote
+   * matcher encountered an error trying to
+   * get matches
+   */
+  ERROR: 3
 };

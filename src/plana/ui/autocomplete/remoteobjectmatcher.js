@@ -18,93 +18,251 @@
 
 goog.provide('plana.ui.ac.RemoteObject');
 goog.provide('plana.ui.ac.RemoteObjectMatcher');
+goog.provide('plana.ui.ac.RemoteObjectMatcher.Event');
+goog.provide('plana.ui.ac.RemoteObjectMatcher.EventType');
 
+goog.require('goog.Disposable');
 goog.require('goog.Uri');
-goog.require('goog.ui.ac.RemoteArrayMatcher');
+goog.require('goog.Uri.QueryData');
+goog.require('goog.events.Event');
+goog.require('goog.events.EventHandler');
+goog.require('goog.events.EventTarget');
+goog.require('goog.net.EventType');
+goog.require('goog.net.XhrIo');
+goog.require('goog.net.XmlHttpFactory');
 
 /**
- * This class extends {@link goog.ui.ac.RemoteArrayMatcher} to handle
- * an array of {@link plana.ui.ac.RemoteObject} objects instead of just
- * string arrays. However, we also support plain string arrays too
+ * This class is an alternative to {@link goog.ui.ac.RemoteArrayMatcher}. It
+ * submits an ajax request to fetch an array of matches. The array may contain
+ * plain strings or objects. If the matches are objects, then the objects
+ * 'should' contain a 'caption' property. If they don't, a user will see the
+ * result of 'toString' in the suggestion list. This class fires events if the
+ * server returned matches, the ajax request failed (i.e. server error), or the
+ * server returned an invalid response for some reason.
  *
  * @constructor
- * @extends {goog.ui.ac.RemoteArrayMatcher}
+ * @extends {goog.events.EventTarget}
  *
- * @param {string} url The Uri which generates the auto complete matches. The
+ * @param {goog.Uri} uri The uri which generates the auto complete matches. The
  *     search term is passed to the server as the 'token' query param
+ * @param {goog.net.XhrIo=} opt_xhrIo Optional XhrIo object to use. By default
+ *     we create a new instance
+ * @param {goog.net.XmlHttpFactory=} opt_xmlHttpFactory Optional factory to use
+ *     when creating XMLHttpRequest objects
+ * @param {boolean=} opt_multi Whether to allow multiple entries
  * @param {boolean=} opt_noSimilar If true, request that the server does not do
  *     similarity matches for the input token against the dictionary
  *     The value is sent to the server as the 'use_similar' query param which is
  *     either "1" (opt_noSimilar==false) or "0" (opt_noSimilar==true)
  */
-plana.ui.ac.RemoteObjectMatcher = function(url, opt_noSimilar) {
-  goog.ui.ac.RemoteArrayMatcher.call(this, url, opt_noSimilar);
-
-  /**
-   * An optional object to use for logging exceptions
-   * when parsing the response from the server
-   * @type {?Object}
-   * @private
-   */
-  this.errorLogger_ = null;
+plana.ui.ac.RemoteObjectMatcher = function(
+  uri, opt_xhrIo, opt_xmlHttpFactory, opt_multi, opt_noSimilar) {
+  goog.events.EventTarget.call(this);
 
   /**
    * Reference to the URI used to request matches
    * @type {goog.Uri}
+   * @protected
+   */
+  this.uri = uri;
+
+  //set constant query parameters
+  var queryData = this.uri.getQueryData();
+  queryData.set(plana.ui.ac.RemoteObjectMatcher.USE_SIMILAR_PARA,
+    String(Number(opt_noSimilar || false)));
+  queryData.set(plana.ui.ac.RemoteObjectMatcher.MULTI_TOKEN_PARA,
+    String(Number(opt_multi || false)));
+  queryData = null;
+
+  /**
+   * The class for performing ajax requests
+   * @type {goog.net.XhrIo}
+   * @protected
+   */
+  this.xhrIo = opt_xhrIo || new goog.net.XhrIo(opt_xmlHttpFactory);
+
+  /**
+   * Boolean flag whether the request object
+   * is ready to handle another request
+   * @type {boolean}
+   * @protected
+   */
+  this.xhrIoReady = true;
+
+  /**
+   * A map of request headers to include in
+   * send requests
+   * @type {?Object}
    * @private
    */
-  this.uri_ = new goog.Uri(url);
+  this.xhrIoRequestHeaders_ = null;
+
+  /**
+   * The type of request, i.e. 'GET' or 'POST'
+   * @type {string}
+   * @private
+   */
+  this.xhrIoRequestType_ = 'GET';
+
+  /**
+   * The event handler used by this class to listen to
+   * ajax events
+   * @type {goog.events.EventHandler}
+   * @private
+   */
+  this.eventHandler_ = new goog.events.EventHandler(this);
+
+  //start listening to ajax events
+  this.eventHandler_.listen(this.xhrIo,
+    goog.object.getValues(goog.net.EventType),
+    this.onRequestCompleted, false, this);
 };
-goog.inherits(plana.ui.ac.RemoteObjectMatcher, goog.ui.ac.RemoteArrayMatcher);
+goog.inherits(plana.ui.ac.RemoteObjectMatcher, goog.events.EventTarget);
 
 /**
- * Returns whether the suggestions should be updated. We're ignoring
- * empty strings (tokens)
- * @param {string} uri The base URI of the request target
- * @param {string} token Current token in autocomplete
- * @param {number} maxMatches Maximum number of matches required
- * @param {boolean} useSimilar A hint to the server
- * @param {string=} opt_fullString Complete text in the input element
- * @return {boolean} Whether new matches be requested
- * @override
+ * The name of the token parameter passed to the server
+ * @type {string}
  */
-plana.ui.ac.RemoteObjectMatcher.prototype.shouldRequestMatches =
-  function(uri, token, maxMatches, useSimilar, opt_fullString) {
-    return !goog.string.isEmptySafe(token);
-};
+plana.ui.ac.RemoteObjectMatcher.TOKEN_PARA = 'token';
 
 /**
- * Parses and retrieves the array of suggestions from XHR response
- * @param {string} responseText The XHR response text
- * @return {Array.<plana.ui.ac.RemoteObject>} The array of suggestions
- * @override
+ * The parameter name of the flag that specifies whether the server
+ * should return matches that are similar to the search token
+ * @see goog.ui.ac.AutoComplete for an explanation of this flag
+ * @type {string}
  */
-plana.ui.ac.RemoteObjectMatcher.prototype.parseResponseText = function(
-  responseText) {
-  var matches = [];
-  // If there is no response text, unsafeParse will throw a syntax error.
-  if (responseText) {
-    /** @preserveTry */
-    try {
-      var json = goog.json.unsafeParse(responseText);
-      goog.asserts.assert(goog.isArray(json));
-      for (var i = 0, match; match = json[i]; ++i)
-        matches.push(new plana.ui.ac.RemoteObject(match));
-    } catch (exception) {
-      if (this.errorLogger_)
-        this.errorLogger_.log(exception);
-    }
-  }
-  return /** @type {Array.<plana.ui.ac.RemoteObject>} */ (matches);
-};
+plana.ui.ac.RemoteObjectMatcher.USE_SIMILAR_PARA = 'user_similar';
+
+/**
+ * The parameter name of the flag that specifies whether the autocomplete
+ * supports multiple tokens
+ * @type {string}
+ */
+plana.ui.ac.RemoteObjectMatcher.MULTI_TOKEN_PARA = 'multi';
+
+
+/**
+ * The name of the parameter that specifies how many matches the
+ * server should return
+ * @type {string}
+ */
+plana.ui.ac.RemoteObjectMatcher.MAX_MATCHES_PARA = 'max_matches';
+
+/**
+ * The name of the parameter that contains the entire input value,
+ * including previous tokens
+ * @type {string}
+ */
+plana.ui.ac.RemoteObjectMatcher.FULL_STRING_PARA = 'fullstring';
+
+/**
+ * The property name of objects that contain the caption to display
+ * in the list of suggestions
+ * @type {string}
+ */
+plana.ui.ac.RemoteObjectMatcher.CAPTION_PROPERTY = 'caption';
 
 /**
  * @override
  */
 plana.ui.ac.RemoteObjectMatcher.prototype.disposeInternal = function() {
   plana.ui.ac.RemoteObjectMatcher.superClass_.disposeInternal.call(this);
-  this.errorLogger_ = null;
-  this.uri_ = null;
+  /** not strictly nec., because we're disposing of eventHandler_, but
+   * better to be explicit :) */
+  this.eventHandler_.unlisten(this.xhrIo,
+    goog.object.getValues(goog.net.EventType),
+    this.onRequestCompleted, false, this);
+
+  this.uri = null;
+  if (!this.xhrIoReady)
+    this.xhrIo.abort();
+  this.xhrIo.dispose();
+  this.xhrIo = null;
+  this.xhrIoReady = null;
+  this.xhrIoRequestHeaders_ = null;
+  this.xhrIoRequestType_ = null;
+  this.eventHandler_.dispose();
+  this.eventHandler_ = null;
+};
+
+
+/**
+ * Callback for when the server request completed.
+ * @param {goog.events.Event} e
+ * @protected
+ */
+plana.ui.ac.RemoteObjectMatcher.prototype.onRequestCompleted = function(e) {
+  /** make sure we're not disposed while the server request was pending */
+  if (this.isDisposed()) {
+    e.preventDefault();
+    e.stopPropagation();
+    return;
+  }
+  switch (e.type) {
+    case goog.net.EventType.SUCCESS:
+      var response = null;
+      try {
+        response = this.xhrIo.getResponseJson();
+        goog.asserts.assert('response must be an array',
+          goog.isArray(response));
+      } catch (ex) {
+        response = null;
+      }
+      if (response != null) {
+        /** @type {Array.<plana.ui.ac.RemoteObject>} */
+        var matches = [];
+        for (var i = 0, match; match = response[i]; ++i)
+          matches.push(new plana.ui.ac.RemoteObject(match));
+        this.dispatchEvent(
+          new plana.ui.ac.RemoteObjectMatcher.Event(
+            plana.ui.ac.RemoteObjectMatcher.EventType.MATCHES, this, matches));
+        matches = null;
+      } else {
+        this.dispatchEvent(
+          new goog.events.Event(
+            plana.ui.ac.RemoteObjectMatcher.EventType.INVALID_RESPONSE, this));
+      }
+      break;
+    case goog.net.EventType.ERROR:
+    case goog.net.EventType.TIMEOUT:
+      this.dispatchEvent(
+        new goog.events.Event(
+          plana.ui.ac.RemoteObjectMatcher.EventType.FAILED_REQUEST, this));
+      break;
+    case goog.net.EventType.ABORT:
+    case goog.net.EventType.COMPLETE:
+      break;
+    case goog.net.EventType.READY:
+      this.xhrIoReady = true;
+      break;
+  }
+};
+
+/**
+ * Retrieve a set of matching rows from the server via ajax
+ * @param {string} token The text that should be matched; passed to the server
+ *     as the 'token' query param
+ * @param {number} maxMatches The maximum number of matches requested from the
+ *     server; passed as the 'max_matches' query param.  The server is
+ *     responsible for limiting the number of matches that are returned
+ * @param {string} fullstring The complete text, including token
+ */
+plana.ui.ac.RemoteObjectMatcher.prototype.requestMatches = function(
+  token, maxMatches, fullstring) {
+
+  if (!this.xhrIoReady) {
+    this.xhrIo.abort();
+  }
+
+  var queryData = this.uri.getQueryData();
+  queryData.set(plana.ui.ac.RemoteObjectMatcher.TOKEN_PARA, token);
+  queryData.set(plana.ui.ac.RemoteObjectMatcher.MAX_MATCHES_PARA,
+    String(maxMatches));
+  queryData.set(plana.ui.ac.RemoteObjectMatcher.FULL_STRING_PARA, fullstring);
+
+  this.xhrIoReady = false;
+  this.xhrIo.send(this.uri.getPath(), this.xhrIoRequestType_,
+    queryData.toString(), this.xhrIoRequestHeaders_);
 };
 
 /**
@@ -113,42 +271,83 @@ plana.ui.ac.RemoteObjectMatcher.prototype.disposeInternal = function() {
  * @return {goog.Uri.QueryData}
  */
 plana.ui.ac.RemoteObjectMatcher.prototype.getQueryData = function() {
-  return this.uri_.getQueryData();
+  return this.uri.getQueryData();
 };
 
 /**
- * Setter for the error logger
- * @param {?Object} logger An object that must implement a 'log' function
+ * Setter for a map of headers to add to requests.
+ * @param {?Object} headers Headers to send along ajax requests
  */
-plana.ui.ac.RemoteObjectMatcher.prototype.setErrorLogger = function(logger) {
-  this.errorLogger_ = logger;
+plana.ui.ac.RemoteObjectMatcher.prototype.setRequestHeaders = function(
+  headers) {
+  this.xhrIoRequestHeaders_ = headers;
 };
 
 /**
- * Builds a complete GET-style URL, given the base URI and autocomplete related
- * parameter values.
- * @param {string} uri The base URI of the request target
- * @param {string} token Current token in autocomplete
- * @param {number} maxMatches Maximum number of matches required
- * @param {boolean} useSimilar A hint to the server
- * @param {string=} opt_fullString Complete text in the input element
- * @return {?string} The complete url. Return null if no request should be sent
- * @override
+ * Setter for the type of request, i.e. 'GET' or 'POST'.
+ * @param {!string} requestType The request type of the ajax request
  */
-plana.ui.ac.RemoteObjectMatcher.prototype.buildUrl = function(uri,
-  token, maxMatches, useSimilar, opt_fullString) {
+plana.ui.ac.RemoteObjectMatcher.prototype.setRequestType = function(
+  requestType) {
+  goog.asserts.assert('request type must be get or post',
+    goog.string.caseInsensitiveCompare(requestType, 'get') == 0 ||
+    goog.string.caseInsensitiveCompare(requestType, 'post') == 0);
 
-  var url = new goog.Uri(uri);
-  //add additional user query data
-  var queryData = this.uri_.getQueryData();
-  var keys = queryData.getKeys();
-  for (var i = 0, key; key = keys[i]; ++i) {
-    url.setParameterValue(key, queryData.get(key));
-  }
-
-  return plana.ui.ac.RemoteObjectMatcher.superClass_.buildUrl.call(this,
-    url.toString(), token, maxMatches, useSimilar, opt_fullString);
+  this.xhrIoRequestType_ = requestType;
 };
+
+/**
+ * Setter for the timeout for ajax requests
+ * @param {!number} timeout Set to 0 for no timeout
+ */
+plana.ui.ac.RemoteObjectMatcher.prototype.setRequestTimeout = function(
+  timeout) {
+  this.xhrIo.setTimeoutInterval(timeout);
+};
+
+/**
+ * List of events dispatched by this class
+ * @enum {!string}
+ */
+plana.ui.ac.RemoteObjectMatcher.EventType = {
+  /**
+   * @desc Event dispatched if ajax request
+   * did not succeed
+   */
+  FAILED_REQUEST: goog.events.getUniqueId('failed'),
+  /**
+   * @desc Event dispatched when an array of matches has
+   * been returned from the server
+   */
+  MATCHES: goog.events.getUniqueId('matches'),
+  /**
+   * @desc Event dispatched if the server object was not
+   * an array
+   */
+  INVALID_RESPONSE: goog.events.getUniqueId('invalid')
+};
+
+/**
+ * A custom event class that has a matches property
+ * @constructor
+ * @extends {goog.events.Event}
+ * @param {string} type The event type
+ * @param {plana.ui.ac.RemoteObjectMatcher} target The remote
+ *     matcher instance that triggered the event
+ * @param {Array.<plana.ui.ac.RemoteObject>=} opt_matches Optional
+ *     array of matches
+ */
+plana.ui.ac.RemoteObjectMatcher.Event = function(type, target, opt_matches) {
+  goog.events.Event.call(this, type, target);
+
+  /**
+   * Optional array of matches
+   * @type {?Array.<plana.ui.ac.RemoteObject>}
+   * @public
+   */
+  this.matches = opt_matches || null;
+};
+goog.inherits(plana.ui.ac.RemoteObjectMatcher.Event, goog.events.Event);
 
 /**
  * A class to wrap a suggestion item returned by the server.
@@ -172,6 +371,14 @@ plana.ui.ac.RemoteObject = function(data) {
 goog.inherits(plana.ui.ac.RemoteObject, goog.Disposable);
 
 /**
+ * This function returns a clone
+ * @return {plana.ui.ac.RemoteObject}
+ */
+plana.ui.ac.RemoteObject.prototype.clone = function() {
+  return new plana.ui.ac.RemoteObject(this.data_);
+};
+
+/**
  * If the server match has a caption property, we return
  * this property. Otherwise call 'toString'
  * @return {!string}
@@ -182,8 +389,9 @@ plana.ui.ac.RemoteObject.prototype.toString = function() {
     return '';
   if (goog.isString(this.data_))
     return this.data_;
-  if (goog.isDefAndNotNull(this.data_['caption']))
-    return this.data_['caption'];
+  if (goog.isDefAndNotNull(
+    this.data_[plana.ui.ac.RemoteObjectMatcher.CAPTION_PROPERTY]))
+    return this.data_[plana.ui.ac.RemoteObjectMatcher.CAPTION_PROPERTY];
   return this.data_.toString();
 };
 

@@ -16,7 +16,7 @@
 
 'use strict';
 
-goog.provide('plana.ui.ts.TypeaheadSearchRenerer');
+goog.provide('plana.ui.ts.TypeaheadSearchRenderer');
 goog.require('plana.ui.ac.AutoCompleteRenderer');
 
 /**
@@ -25,10 +25,10 @@ goog.require('plana.ui.ac.AutoCompleteRenderer');
  * @constructor
  * @extends {plana.ui.ac.AutoCompleteRenderer}
  */
-plana.ui.ts.TypeaheadSearchRenerer = function() {
+plana.ui.ts.TypeaheadSearchRenderer = function() {
   plana.ui.ac.AutoCompleteRenderer.call(this);
 };
-goog.inherits(plana.ui.ts.TypeaheadSearchRenerer,
+goog.inherits(plana.ui.ts.TypeaheadSearchRenderer,
   plana.ui.ac.AutoCompleteRenderer);
 
 /**
@@ -37,7 +37,7 @@ goog.inherits(plana.ui.ts.TypeaheadSearchRenerer,
  * @param {!goog.dom.DomHelper} dom
  * @return {!Element}
  */
-plana.ui.ts.TypeaheadSearchRenerer.prototype.createDom = function(dom) {
+plana.ui.ts.TypeaheadSearchRenderer.prototype.createDom = function(dom) {
   var wrapper = dom.createDom('div');
   var div = dom.createDom('div', {
     'class': 'input-group'
@@ -62,7 +62,8 @@ plana.ui.ts.TypeaheadSearchRenerer.prototype.createDom = function(dom) {
  * @param {!goog.dom.DomHelper} dom
  * @return {?Element}
  */
-plana.ui.ts.TypeaheadSearchRenerer.prototype.getInput = function(component, dom) {
+plana.ui.ts.TypeaheadSearchRenderer.prototype.getInput = function(
+  component, dom) {
   var wrapper = component.getElement();
   if (wrapper)
     return dom.getFirstElementChild(dom.getFirstElementChild(wrapper));
@@ -75,7 +76,7 @@ plana.ui.ts.TypeaheadSearchRenerer.prototype.getInput = function(component, dom)
  * @param {!goog.dom.DomHelper} dom
  * @return {?Element}
  */
-plana.ui.ts.TypeaheadSearchRenerer.prototype.getSearchButton = function(
+plana.ui.ts.TypeaheadSearchRenderer.prototype.getSearchButton = function(
   component, dom) {
   var wrapper = component.getElement();
   if (wrapper) {
