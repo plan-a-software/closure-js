@@ -20,6 +20,7 @@ goog.provide('plana.ui.ac.InputHandler');
 
 goog.require('goog.Timer');
 goog.require('goog.a11y.aria');
+goog.require('goog.array');
 goog.require('goog.dom.selection');
 goog.require('goog.events.BrowserEvent');
 goog.require('goog.events.Event');
@@ -107,7 +108,7 @@ plana.ui.ac.InputHandler = function(element, opt_multi) {
   this.supportsMulti_ = opt_multi || false;
 
   /**
-   * @see goog.ui.ac.InputHandler
+   * @see http://docs.closure-library.googlecode.com/git-history/7bb23f83ca959ae16e10ebc6734b0ba882629904/class_goog_ui_ac_InputHandler.html
    * The separators used if the input supports multiple entries.
    * Added here because the base class doesn't expose this
    * property
@@ -141,7 +142,7 @@ plana.ui.ac.InputHandler = function(element, opt_multi) {
   this.formatRegEx_ = new RegExp(this.defaultSeparator_ + '([^\\s])', 'g');
 
   /**
-   * @see goog.ui.ac.InputHandler
+   * @see http://docs.closure-library.googlecode.com/git-history/7bb23f83ca959ae16e10ebc6734b0ba882629904/class_goog_ui_ac_InputHandler.html
    * If we're in 'multi' mode, does typing a separator force the updating of
    * suggestions?
    * For example, if somebody finishes typing "obama, hillary,", should the
@@ -155,7 +156,7 @@ plana.ui.ac.InputHandler = function(element, opt_multi) {
   this.separatorUpdates_ = true;
 
   /**
-   * @see goog.ui.ac.InputHandler
+   * @see http://docs.closure-library.googlecode.com/git-history/7bb23f83ca959ae16e10ebc6734b0ba882629904/class_goog_ui_ac_InputHandler.html
    * If we're in 'multi' mode, does typing a separator force the current term
    * to autocomplete?
    * For example, if 'tomato' is a suggested completion and the user has typed
@@ -173,7 +174,7 @@ plana.ui.ac.InputHandler = function(element, opt_multi) {
   this.previousValue_ = '';
 
   /**
-   * @see goog.ui.ac.InputHandler
+   * @see http://docs.closure-library.googlecode.com/git-history/7bb23f83ca959ae16e10ebc6734b0ba882629904/class_goog_ui_ac_InputHandler.html
    * Flag used to indicate that the IME key has been seen and we need to wait
    * for the up event.
    * @type {boolean}
@@ -340,7 +341,7 @@ plana.ui.ac.InputHandler.prototype.onKey_ = function(e) {
         var index = this.getCurrentTokenIndex(entries);
         if (index == -1)
           index = 0;
-        this.matchedObjects_.splice(index, 1);
+        this.matchedObjects_[index] = null;
       }
       break;
     default:
@@ -391,6 +392,8 @@ plana.ui.ac.InputHandler.prototype.onKeyUp_ = function(e) {
       case goog.events.KeyCodes.MAC_ENTER:
         break;
       default:
+        this.updateMatchedObject_(null,
+          this.getCurrentTokenIndex(this.getEntries()));
         this.sendChangeNotification_();
     }
   }
@@ -398,7 +401,7 @@ plana.ui.ac.InputHandler.prototype.onKeyUp_ = function(e) {
 };
 
 /**
- * @see goog.ui.ac.InputHandler
+ * @see http://docs.closure-library.googlecode.com/git-history/7bb23f83ca959ae16e10ebc6734b0ba882629904/class_goog_ui_ac_InputHandler.html
  * Handles a key event for a separator key.
  * @param {goog.events.BrowserEvent} e Browser event object.
  * @private
@@ -478,11 +481,10 @@ plana.ui.ac.InputHandler.prototype.sendChangeNotification_ = function() {
  */
 plana.ui.ac.InputHandler.prototype.updateMatchedObject_ = function(
   match, index) {
-  if (index >= this.matchedObjects_.length)
-    this.matchedObjects_.push(match.getData());
-  else {
+  if (match == null) {
+    this.matchedObjects_[index] = null;
+  } else
     this.matchedObjects_[index] = match.getData();
-  }
 };
 
 /**
@@ -572,10 +574,15 @@ plana.ui.ac.InputHandler.prototype.getInput = function() {
  * @return {Array.<Object|string>}
  */
 plana.ui.ac.InputHandler.prototype.getMatchedObjects = function() {
+  var filtered = goog.array.filter(this.matchedObjects_, function(match, indx) {
+    if (match != null)
+      return true;
+    return false;
+  });
   if (this.supportsMulti_)
-    return this.matchedObjects_.slice(0);
+    return filtered.slice(0);
   else
-    return this.matchedObjects_.slice(0, 1);
+    return filtered.slice(0, 1);
 };
 
 /**
