@@ -11,7 +11,9 @@ The class also displays 'Loading' and 'No matches found' messages, if a search i
 
 [Here](http://plan-a-software.github.io/autocomplete.html) is a demo of the class.
 
-The JSDoc for this class is [here](http://plan-a-software.github.io/doc/autocomplete/index.html).
+The JSDoc for this class is [here](http://plan-a-software.github.io/docs/autocomplete/index.html).
+
+To get a list of matched items, use the ```getModel``` method. To get a list of tokens entered by a user that do not match suggestions from the server use ```getNonMatches```.
 
 ### Dependencies
 
@@ -46,7 +48,7 @@ An event is fired when the fulltext search completed. The event contains the sea
 
 [Here](http://plan-a-software.github.io/typeaheadsearch.html) is a demo of the class.
 
-The JSDoc for this class is [here](http://plan-a-software.github.io/doc/typeaheadsearch/index.html).
+The JSDoc for this class is [here](http://plan-a-software.github.io/docs/typeaheadsearch/index.html).
 
 ### Dependencies
 
