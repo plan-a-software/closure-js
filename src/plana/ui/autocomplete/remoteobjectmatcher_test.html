@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html class="no-js">
+<!--
+Copyright 2014 Plan-A Software Ltd. All Rights Reserved.
+
+Use of this source code is governed by the Apache License, Version 2.0.
+-->
+<!--
+  @author kiran@plan-a-software.co.uk (Kiran Lakhotia)
+-->
+
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+  <title>Remote Object Matcher Test</title>
+  <meta name="description" content="Unit tests for the autocomplete component">
+  <meta name="viewport" content="width=device-width">
+
+  <!-- include the relevant style sheets from google closure -->
+  <link rel="stylesheet" href="../../../css/autocomplete.css">
+</head>
+
+<body>
+
+  <div id="container">
+  </div>
+
+  <!-- set the path to goog base -->
+  <script src="../../vendor/goog/base.js"></script>
+  <script type="text/javascript">
+  goog.require('goog.Uri');
+  goog.require('goog.dom');
+  goog.require('goog.events.EventHandler');
+  goog.require('goog.events.EventTarget');
+  goog.require('goog.net.EventType');
+  goog.require('goog.net.WrapperXmlHttpFactory');
+  goog.require('goog.testing.AsyncTestCase');
+  goog.require('goog.testing.events');
+  goog.require('goog.testing.jsunit');
+  goog.require('goog.testing.net.XhrIo');
+  </script>
+
+  <script type="text/javascript" src="remoteobjectmatcher.js"></script>
+
+  <script type="text/javascript">
+  var mockServerObjects = [{
+    id: 1,
+    caption: 'hello'
+  }, {
+    id: 2,
+    caption: 'world'
+  }];
+  var mockServerStrings = [
+    'coding',
+    'on',
+    'keep',
+    'calm',
+    'and',
+    'carry'
+  ];
+
+  function MockXmlHttp() {
+    /**
+     * The headers for this XmlHttpRequest.
+     * @type {!Object.<string>}
+     */
+    this.headers = {};
+
+    /**
+     * The request data string
+     * @type {string}
+     */
+    this.content;
+  };
+
+  var lastUri;
+  var sendDelay = 0;
+  var timerId = null;
+  var sendInvalidResponse = false;
+  MockXmlHttp.prototype.readyState = goog.net.XmlHttp.ReadyState.UNINITIALIZED;
+
+  MockXmlHttp.prototype.status = 200;
+
+  MockXmlHttp.syncSend = true;
+
+  MockXmlHttp.prototype.send = function(opt_data) {
+    this.content = opt_data;
+    this.readyState = goog.net.XmlHttp.ReadyState.UNINITIALIZED;
+
+    lastMockXmlHttp.responseText = this.getResponseJson();
+
+    if (MockXmlHttp.syncSend) {
+      this.complete();
+    }
+
+  };
+
+
+  MockXmlHttp.prototype.complete = function() {
+    this.readyState = goog.net.XmlHttp.ReadyState.LOADING;
+    this.onreadystatechange();
+
+    this.readyState = goog.net.XmlHttp.ReadyState.LOADED;
+    this.onreadystatechange();
+
+    this.readyState = goog.net.XmlHttp.ReadyState.INTERACTIVE;
+    this.onreadystatechange();
+
+    if (timerId != null) {
+      window.clearTimeout(timerId);
+    }
+    var self = this;
+    timerId = window.setTimeout(function() {
+      self.readyState = goog.net.XmlHttp.ReadyState.COMPLETE;
+      self.onreadystatechange();
+      self = null;
+      timerId = null;
+    }, sendDelay);
+  };
+
+
+  MockXmlHttp.prototype.open = function(verb, uri, async) {
+    lastUri = uri;
+  };
+
+  MockXmlHttp.prototype.abort = function() {};
+
+  MockXmlHttp.prototype.setRequestHeader = function(key, value) {
+    this.headers[key] = value;
+  };
+
+  MockXmlHttp.prototype.getResponseJson = function(opt_xssiPrefix) {
+    //var uri = new goog.Uri(lastUri);
+    var query = new goog.Uri.QueryData(this.content);
+    var filterStrings = query.get('token').split(',');
+    var useMultiple = query.get('multi') == 1;
+    if (!useMultiple) {
+      var str = filterStrings.shift();
+      if (str)
+        filterStrings = [str];
+      else
+        filterStrings = [];
+    }
+    var matches = [];
+    for (var i = 0, str; str = filterStrings[i]; ++i) {
+      str = goog.string.trim(str);
+      for (var o = 0, obj; obj = mockServerObjects[o]; ++o) {
+        if (goog.string.contains(obj.caption, str) ||
+          goog.string.caseInsensitiveCompare(obj.caption, str) == 0) {
+          matches.push(obj);
+        }
+      }
+      for (var s = 0, sobj; sobj = mockServerStrings[s]; ++s) {
+        if (goog.string.contains(sobj, str) ||
+          goog.string.caseInsensitiveCompare(sobj, str) == 0) {
+          matches.push(sobj);
+        }
+      }
+    }
+    if (sendInvalidResponse)
+      return null;
+    return goog.json.serialize(matches);
+  };
+
+  var lastMockXmlHttp;
+  goog.net.XmlHttp.setGlobalFactory(new goog.net.WrapperXmlHttpFactory(
+    function() {
+      lastMockXmlHttp = new MockXmlHttp();
+      return lastMockXmlHttp;
+    },
+    function() {
+      return {};
+    }));
+  </script>
+
+  <script type="text/javascript">
+  var testCase = goog.testing.AsyncTestCase.createAndInstall('remoteobjectmatcher');
+  var uri = new goog.Uri('bla');
+  var asyncTimer = null;
+  var matcher = null;
+
+  function setUp() {
+    sendDelay = 0;
+    sendInvalidResponse = false;
+  }
+
+  function tearDown() {
+    if (timerId != null) {
+      window.clearTimeout(timerId);
+      timerId = null;
+    }
+    if (asyncTimer != null) {
+      window.clearTimeout(asyncTimer);
+      asyncTimer = null;
+    }
+    if (matcher != null) {
+      matcher.dispose();
+      matcher = null;
+    }
+    goog.events.removeAll();
+  }
+
+  function tearDownPage() {
+    uri = null;
+  }
+
+  function testGetResponse() {
+    var cb = null;
+    matcher = new plana.ui.ac.RemoteObjectMatcher(uri);
+    var expectedResponseType = null;
+    var expectedResponse = null;
+    var lastType = null;
+    var xhrListener = goog.events.listen(matcher, [
+      plana.ui.ac.RemoteObjectMatcher.EventType.FAILED_REQUEST,
+      plana.ui.ac.RemoteObjectMatcher.EventType.MATCHES,
+      plana.ui.ac.RemoteObjectMatcher.EventType.INVALID_RESPONSE
+    ], function(e) {
+      assertEquals('wrong response type event', expectedResponseType, e.type);
+      switch (e.type) {
+        case plana.ui.ac.RemoteObjectMatcher.EventType.FAILED_REQUEST:
+          break;
+        case plana.ui.ac.RemoteObjectMatcher.EventType.MATCHES:
+          var matches = e.matches;
+          assertNotNull('matches cannot be null', matches);
+          assertEquals('matches returned and expected length dont match',
+            expectedResponse.length, matches.length);
+          for (var i = 0, match; match = expectedResponse[i]; ++i) {
+            var smatch = matches[i];
+            if (goog.isString(match)) {
+              assertEquals('strings dont match', match, smatch.toString());
+            } else {
+              smatch = smatch.getData();
+              assertEquals('object ids dont match', match.id, smatch.id);
+              assertEquals('object captions dont match', match.caption, smatch.caption);
+            }
+          }
+          break;
+        case plana.ui.ac.RemoteObjectMatcher.EventType.INVALID_RESPONSE:
+          break;
+      }
+      lastType = e.type;
+    }, false);
+
+    var wait = function() {
+      asyncTimer = null;
+      if (lastType != null) {
+        testCase.continueTesting();
+        var next = cb.shift();
+        if (next)
+          next();
+      } else {
+        asyncTimer = window.setTimeout(wait, 100);
+      }
+    };
+
+    var testServerError = function() {
+      expectedResponseType = plana.ui.ac.RemoteObjectMatcher.EventType.FAILED_REQUEST;
+      sendInvalidResponse = false;
+      MockXmlHttp.prototype.status = 500;
+      lastType = null;
+      matcher.requestMatches('hello', 10);
+      testCase.waitForAsync('waiting for callback');
+      wait();
+    };
+
+    var testInvalidResposne = function() {
+      expectedResponseType = plana.ui.ac.RemoteObjectMatcher.EventType.INVALID_RESPONSE;
+      sendInvalidResponse = true;
+      MockXmlHttp.prototype.status = 200;
+      lastType = null;
+      matcher.requestMatches('hello', 10);
+      testCase.waitForAsync('waiting for callback');
+      wait();
+    };
+
+    var testMatches = function() {
+      expectedResponseType = plana.ui.ac.RemoteObjectMatcher.EventType.MATCHES;
+      expectedResponse = [mockServerObjects[0]];
+      sendInvalidResponse = false;
+      MockXmlHttp.prototype.status = 200;
+      lastType = null;
+      matcher.requestMatches('hello', 10);
+      testCase.waitForAsync('waiting for callback');
+      wait();
+    };
+
+    cb = [testInvalidResposne, testMatches];
+    testServerError();
+  }
+
+  function testUrlParas() {
+    matcher = new plana.ui.ac.RemoteObjectMatcher(uri);
+    var query = matcher.getQueryData();
+    query.set('testtoken', 'good');
+    matcher.requestMatches('hello', 10);
+    var serverQuery = new goog.Uri.QueryData(lastMockXmlHttp.content);
+    assertTrue('query data wasnt set', serverQuery.containsKey('testtoken'));
+    assertEquals('query data has wrong value', 'good', serverQuery.get('testtoken'));
+  }
+  </script>
+</body>
+
+</html>

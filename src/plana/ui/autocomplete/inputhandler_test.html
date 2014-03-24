@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html class="no-js">
+<!--
+The IME tests here are copied from @see inputhandler_test.html from Google closure's library.
+
+Copyright 2007 The Closure Library Authors. All Rights Reserved.
+
+Use of this source code is governed by the Apache License, Version 2.0.
+///////////////////////////////////////////////////////
+Any modifications were made by Plan-A Software Ltd.
+
+Copyright 2014 Plan-A Software Ltd. All Rights Reserved.
+
+@author kiran@plan-a-software.co.uk (Kiran Lakhotia)
+-->
+
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+  <title>Input Handler Test</title>
+  <meta name="description" content="Unit tests for the autocomplete component">
+  <meta name="viewport" content="width=device-width">
+</head>
+
+<body>
+
+  <div id="container">
+    <input id="myinput" />
+  </div>
+
+  <!-- set the path to goog base -->
+  <script src="../../vendor/goog/base.js"></script>
+  <script type="text/javascript">
+  goog.require('goog.dom');
+  goog.require('goog.a11y.aria');
+  goog.require('goog.events.BrowserEvent');
+  goog.require('goog.events.Event');
+  goog.require('goog.events.EventHandler');
+  goog.require('goog.events.EventTarget');
+  goog.require('goog.events.EventType');
+  goog.require('goog.events.KeyCodes');
+  goog.require('goog.events.KeyHandler');
+  goog.require('goog.string');
+  goog.require('goog.dom.selection');
+
+  goog.require('goog.net.WrapperXmlHttpFactory');
+  goog.require('goog.testing.AsyncTestCase');
+  goog.require('goog.testing.events');
+  goog.require('goog.testing.jsunit');
+  goog.require('goog.testing.net.XhrIo');
+  </script>
+
+  <script type="text/javascript" src="remoteobjectmatcher.js"></script>
+  <script type="text/javascript" src="inputhandler.js"></script>
+
+  <script type="text/javascript">
+  var testCase = goog.testing.AsyncTestCase.createAndInstall('inputhandler');
+  var input = document.getElementById('myinput');
+  var asyncTimer = null;
+  var handler = null;
+
+  var oldMac, oldWin, oldLinux, oldIe, oldFf, oldWebkit, oldVersion;
+  var oldUsesKeyDown;
+
+  function fireCustomKeySequence(target, keyCode, down, press, up, opt_eventProperties) {
+    var keydown =
+      new goog.testing.events.Event(goog.events.EventType.KEYDOWN, target);
+    var keyup =
+      new goog.testing.events.Event(goog.events.EventType.KEYUP, target);
+    var keypress =
+      new goog.testing.events.Event(goog.events.EventType.KEYPRESS, target);
+    keydown.keyCode = keyup.keyCode = keyCode;
+    keypress.keyCode = keyCode;
+
+    if (opt_eventProperties) {
+      goog.object.extend(keydown, opt_eventProperties);
+      goog.object.extend(keyup, opt_eventProperties);
+      goog.object.extend(keypress, opt_eventProperties);
+    }
+
+    if (down)
+      goog.testing.events.fireBrowserEvent(keydown);
+    if (press)
+      goog.testing.events.fireBrowserEvent(keypress);
+    if (up)
+      goog.testing.events.fireBrowserEvent(keyup);
+  }
+
+  function setUp() {
+    oldMac = goog.userAgent.MAC;
+    oldWin = goog.userAgent.WINDOWS;
+    oldLinux = goog.userAgent.LINUX;
+    oldIe = goog.userAgent.IE;
+    oldFf = goog.userAgent.GECKO;
+    oldWebkit = goog.userAgent.WEBKIT;
+    oldVersion = goog.userAgent.VERSION;
+    oldUsesKeyDown = goog.events.KeyHandler.USES_KEYDOWN_;
+    input.value = '';
+  }
+
+  function tearDown() {
+    goog.userAgent.MAC = oldMac;
+    goog.userAgent.WINDOWS = oldWin;
+    goog.userAgent.LINUX = oldLinux;
+    goog.userAgent.IE = oldIe;
+    goog.userAgent.GECKO = oldFf;
+    goog.userAgent.WEBKIT = oldWebkit;
+    goog.userAgent.VERSION = oldVersion;
+    goog.events.KeyHandler.USES_KEYDOWN_ = oldUsesKeyDown;
+    if (asyncTimer != null) {
+      window.clearTimeout(asyncTimer);
+      asyncTimer = null;
+    }
+    if (handler != null) {
+      handler.dispose();
+      handler = null;
+    }
+    goog.events.removeAll();
+  }
+
+  /** Used to simulate behavior of Windows/Firefox3 */
+
+  function simulateWinFirefox3() {
+    goog.userAgent.MAC = false;
+    goog.userAgent.WINDOWS = true;
+    goog.userAgent.LINUX = false;
+    goog.userAgent.IE = false;
+    goog.userAgent.GECKO = true;
+    goog.userAgent.WEBKIT = false;
+    goog.events.KeyHandler.USES_KEYDOWN_ = false;
+  }
+
+  /** Used to simulate behavior of Windows/InternetExplorer7 */
+
+  function simulateWinIe7() {
+    goog.userAgent.MAC = false;
+    goog.userAgent.WINDOWS = true;
+    goog.userAgent.LINUX = false;
+    goog.userAgent.IE = true;
+    goog.userAgent.GECKO = false;
+    goog.userAgent.WEBKIT = false;
+    goog.events.KeyHandler.USES_KEYDOWN_ = true;
+  }
+
+  /** Used to simulate behavior of Windows/Chrome */
+
+  function simulateWinChrome() {
+    goog.userAgent.MAC = false;
+    goog.userAgent.WINDOWS = true;
+    goog.userAgent.LINUX = false;
+    goog.userAgent.IE = false;
+    goog.userAgent.GECKO = false;
+    goog.userAgent.WEBKIT = true;
+    goog.userAgent.VERSION = '525';
+    goog.events.KeyHandler.USES_KEYDOWN_ = true;
+  }
+
+  /** Used to simulate behavior of Mac/Firefox3 */
+
+  function simulateMacFirefox3() {
+    goog.userAgent.MAC = true;
+    goog.userAgent.WINDOWS = false;
+    goog.userAgent.LINUX = false;
+    goog.userAgent.IE = false;
+    goog.userAgent.GECKO = true;
+    goog.userAgent.WEBKIT = false;
+    goog.events.KeyHandler.USES_KEYDOWN_ = true;
+  }
+
+  /** Used to simulate behavior of Mac/Safari3 */
+
+  function simulateMacSafari3() {
+    goog.userAgent.MAC = true;
+    goog.userAgent.WINDOWS = false;
+    goog.userAgent.LINUX = false;
+    goog.userAgent.IE = false;
+    goog.userAgent.GECKO = false;
+    goog.userAgent.WEBKIT = true;
+    goog.userAgent.VERSION = '525';
+    goog.events.KeyHandler.USES_KEYDOWN_ = true;
+  }
+
+  /** Used to simulate behavior of Linux/Firefox3 */
+
+  function simulateLinuxFirefox3() {
+    goog.userAgent.MAC = false;
+    goog.userAgent.WINDOWS = false;
+    goog.userAgent.LINUX = true;
+    goog.userAgent.IE = false;
+    goog.userAgent.GECKO = true;
+    goog.userAgent.WEBKIT = false;
+    goog.events.KeyHandler.USES_KEYDOWN_ = true;
+  }
+
+  function testGetToken() {
+    handler = new plana.ui.ac.InputHandler(input, true);
+    var token = handler.getCurrentToken();
+    assertEquals('empty token', '', token);
+
+    input.value = 'hello';
+    token = handler.getCurrentToken();
+    assertEquals('hello token', 'hello', token);
+
+    input.value = 'hello,  world';
+    token = handler.getCurrentToken();
+    assertEquals('word end token', 'world', token);
+
+    goog.dom.selection.setStart(input, 6);
+    goog.dom.selection.setEnd(input, 6);
+    token = handler.getCurrentToken();
+    assertEquals('start of world token', 'world', token);
+
+    goog.dom.selection.setStart(input, 5);
+    goog.dom.selection.setEnd(input, 5);
+    token = handler.getCurrentToken();
+    assertEquals('end of hello token', 'hello', token);
+
+    goog.dom.selection.setStart(input, 2);
+    goog.dom.selection.setEnd(input, 2);
+    token = handler.getCurrentToken();
+    assertEquals('middle of hello token', 'hello', token);
+
+    input.value = 'hello,  world, ';
+    token = handler.getCurrentToken();
+    assertEquals('empty token', '', token);
+  }
+
+  /** Test the normal, non-IME case */
+
+  function testRegularKey() {
+    handler = new plana.ui.ac.InputHandler(input, true);
+
+    // Each key fires down, press, and up in that order, and each should
+    // trigger an autocomplete update
+    assertFalse('IME should not be triggered', handler.isHandlingIME_);
+
+    goog.testing.events.fireKeySequence(input, goog.events.KeyCodes.K);
+    assertFalse('IME should not be triggered by K', handler.isHandlingIME_);
+
+    goog.testing.events.fireKeySequence(input, goog.events.KeyCodes.A);
+    assertFalse('IME should not be triggered by A', handler.isHandlingIME_);
+  }
+
+  /**
+   * This test simulates the key inputs generated by pressing
+   * '<ime_on>a<enter>i<ime_off>u' using the Japanese IME
+   * on Windows/Firefox3.
+   */
+
+  function testImeWinFirefox3() {
+    simulateWinFirefox3();
+    handler = new plana.ui.ac.InputHandler(input, true);
+    input.focus();
+    assertFalse('IME should not be triggered', handler.isHandlingIME_);
+
+    // ime_on
+
+    // a
+    fireCustomKeySequence(input, goog.events.KeyCodes.WIN_IME, true, true, false);
+    // Event is not generated for key code a.
+    assertTrue('IME should be triggered', handler.isHandlingIME_);
+
+    // enter
+    fireCustomKeySequence(input, goog.events.KeyCodes.ENTER, false, false, true);
+    assertFalse('IME should not be triggered', handler.isHandlingIME_);
+
+    // i
+    fireCustomKeySequence(input, goog.events.KeyCodes.WIN_IME, true, true, false);
+    // Event is not generated for key code i.
+    assertTrue('IME should be triggered', handler.isHandlingIME_);
+
+    // ime_off
+
+    // u
+    fireCustomKeySequence(input, goog.events.KeyCodes.U, true, true, true);
+    assertFalse('IME should not be triggered', handler.isHandlingIME_);
+
+    input.blur();
+  }
+
+  /**
+   * This test simulates the key inputs generated by pressing
+   * '<ime_on>a<enter>i<ime_off>u' using the Japanese IME
+   * on Windows/InternetExplorer7.
+   */
+
+  function testImeWinIe7() {
+    simulateWinIe7();
+    input.focus();
+    handler = new plana.ui.ac.InputHandler(input, true);
+
+    assertFalse('IME should not be triggered', handler.isHandlingIME_);
+
+    // ime_on
+
+    // a
+    fireCustomKeySequence(input, goog.events.KeyCodes.WIN_IME, true, false, false);
+    fireCustomKeySequence(input, goog.events.KeyCodes.A, false, false, true);
+    assertTrue('IME should be triggered', handler.isHandlingIME_);
+
+    // enter
+    fireCustomKeySequence(input, goog.events.KeyCodes.WIN_IME, true, false, false);
+    fireCustomKeySequence(input, goog.events.KeyCodes.ENTER, false, false, true);
+    assertFalse('IME should not be triggered', handler.isHandlingIME_);
+
+    // i
+    fireCustomKeySequence(input, goog.events.KeyCodes.WIN_IME, true, false, false);
+    fireCustomKeySequence(input, goog.events.KeyCodes.I, false, false, true);
+    assertTrue('IME should be triggered', handler.isHandlingIME_);
+
+    // ime_off
+
+    // u
+    fireCustomKeySequence(input, goog.events.KeyCodes.U, true, true, true);
+    assertFalse('IME should not be triggered', handler.isHandlingIME_);
+
+    input.blur();
+  }
+
+  /**
+   * This test simulates the key inputs generated by pressing
+   * '<ime_on>a<enter>i<ime_off>u' using the Japanese IME
+   * on Windows/Chrome.
+   */
+
+  function testImeWinChrome() {
+    simulateWinChrome();
+    input.focus();
+    handler = new plana.ui.ac.InputHandler(input, true);
+
+    assertFalse('IME should not be triggered', handler.isHandlingIME_);
+
+    // ime_on
+
+    // a
+    fireCustomKeySequence(input, goog.events.KeyCodes.WIN_IME, true, false, false);
+    fireCustomKeySequence(input, goog.events.KeyCodes.A, false, false, true);
+    assertTrue('IME should be triggered', handler.isHandlingIME_);
+
+    // enter
+    fireCustomKeySequence(input, goog.events.KeyCodes.WIN_IME, true, false, false);
+    fireCustomKeySequence(input, goog.events.KeyCodes.ENTER, false, false, true);
+    assertFalse('IME should not be triggered', handler.isHandlingIME_);
+
+    // i
+    fireCustomKeySequence(input, goog.events.KeyCodes.WIN_IME, true, false, false);
+    fireCustomKeySequence(input, goog.events.KeyCodes.I, false, false, true);
+    assertTrue('IME should be triggered', handler.isHandlingIME_);
+
+    // ime_off
+
+    // u
+    fireCustomKeySequence(input, goog.events.KeyCodes.U, true, true, true);
+    assertFalse('IME should not be triggered', handler.isHandlingIME_);
+
+    input.blur();
+  }
+
+  /**
+   * This test simulates the key inputs generated by pressing
+   * '<ime_on>a<enter>i<ime_off>u' using the Japanese IME
+   * on Mac/Firefox3.
+   */
+
+  function testImeMacFirefox3() {
+    // TODO(user): Currently our code cannot distinguish preedit characters
+    // from normal ones for Mac/Firefox3.
+    // Enable this test after we fix it.
+
+    simulateMacFirefox3();
+    input.focus();
+    handler = new plana.ui.ac.InputHandler(input, true);
+    assertFalse('IME should not be triggered', handler.isHandlingIME_);
+
+    // ime_on
+
+    // a
+    fireCustomKeySequence(input, goog.events.KeyCodes.WIN_IME, true, true, false);
+    assertTrue('IME should be triggered', handler.isHandlingIME_);
+    fireCustomKeySequence(input, goog.events.KeyCodes.A, true, false, true);
+    assertTrue('IME should be triggered', handler.isHandlingIME_);
+
+    // enter
+    fireCustomKeySequence(input, goog.events.KeyCodes.ENTER, true, true, true);
+    assertFalse('IME should not be triggered', handler.isHandlingIME_);
+
+    // i
+    fireCustomKeySequence(input, goog.events.KeyCodes.WIN_IME, true, true, false);
+    fireCustomKeySequence(input, goog.events.KeyCodes.I, true, false, true);
+    assertTrue('IME should be triggered', handler.isHandlingIME_);
+
+    // ime_off
+
+    // u
+    fireCustomKeySequence(input, goog.events.KeyCodes.U, true, true, true);
+    assertFalse('IME should not be triggered', handler.isHandlingIME_);
+
+    input.blur();
+  }
+
+  /**
+   * This test simulates the key inputs generated by pressing
+   * '<ime_on>a<enter>i<ime_off>u' using the Japanese IME
+   * on Mac/Safari3.
+   */
+
+  function testImeMacSafari3() {
+    simulateMacSafari3();
+    input.focus();
+    handler = new plana.ui.ac.InputHandler(input, true);
+    assertFalse('IME should not be triggered', handler.isHandlingIME_);
+
+    // ime_on
+
+    // a
+    fireCustomKeySequence(input, goog.events.KeyCodes.WIN_IME, true, false, false);
+    fireCustomKeySequence(input, goog.events.KeyCodes.A, false, false, true);
+    assertTrue('IME should be triggered', handler.isHandlingIME_);
+
+    // enter
+    fireCustomKeySequence(input, goog.events.KeyCodes.WIN_IME, true, false, false);
+    fireCustomKeySequence(input, goog.events.KeyCodes.ENTER, false, false, true);
+    assertFalse('IME should not be triggered', handler.isHandlingIME_);
+
+    // i
+    fireCustomKeySequence(input, goog.events.KeyCodes.WIN_IME, true, false, false);
+    fireCustomKeySequence(input, goog.events.KeyCodes.I, false, false, true);
+    assertTrue('IME should be triggered', handler.isHandlingIME_);
+
+    // ime_off
+
+    // u
+    fireCustomKeySequence(input, goog.events.KeyCodes.U, true, true, true);
+    assertFalse('IME should not be triggered', handler.isHandlingIME_);
+
+    input.blur();
+  }
+
+  /**
+   * This test simulates the key inputs generated by pressing
+   * '<ime_on>a<enter>i<ime_off>u' using the Japanese IME
+   * on Linux/Firefox3.
+   */
+
+  function testImeLinuxFirefox3() {
+    // TODO(user): Currently our code cannot distinguish preedit characters
+    // from normal ones for Linux/Firefox3.
+    // Enable this test after we fix it.
+
+
+    simulateLinuxFirefox3();
+    input.focus();
+    handler = new plana.ui.ac.InputHandler(input, true);
+    assertFalse('IME should not be triggered', handler.isHandlingIME_);
+
+    // ime_on
+    fireCustomKeySequence(input, goog.events.KeyCodes.WIN_IME, true, true, false);
+
+    // a
+    fireCustomKeySequence(input, goog.events.KeyCodes.A, true, false, true);
+    assertTrue('IME should be triggered', handler.isHandlingIME_);
+
+    // enter
+    fireCustomKeySequence(input, goog.events.KeyCodes.ENTER, true, true, true);
+    assertFalse('IME should not be triggered', handler.isHandlingIME_);
+
+    // i
+    fireCustomKeySequence(input, goog.events.KeyCodes.WIN_IME, true, true, false);
+    fireCustomKeySequence(input, goog.events.KeyCodes.I, true, false, true);
+    assertTrue('IME should be triggered', handler.isHandlingIME_);
+
+    // ime_off
+
+    // u
+    fireCustomKeySequence(input, goog.events.KeyCodes.U, true, true, true);
+    assertFalse('IME should not be triggered', handler.isHandlingIME_);
+
+    input.blur();
+  }
+
+  function testUpdateOnlyIfInputChanged() {
+
+    handler = new plana.ui.ac.InputHandler(input, true);
+
+    var updateCount = 0;
+    var listenerKey = goog.events.listen(handler,
+      plana.ui.ac.InputHandler.EventType.TEXT_CHANGED,
+      function(e) {
+        ++updateCount;
+      });
+
+    handler.update();
+    assertEquals('no update', 0, updateCount);
+
+    input.value = 'hello';
+
+    handler.update();
+    assertEquals('updated', 1, updateCount);
+
+    goog.events.unlistenByKey(listenerKey);
+  }
+
+  function testGetSingleToken() {
+    handler = new plana.ui.ac.InputHandler(input, false);
+    input.value = ',bla,aber,cool,    so was , is ';
+    var entries = handler.getEntries();
+    assertEquals('num entries must be one for single input', 1, entries.length);
+    goog.dom.selection.setStart(input, 17);
+    var token = handler.getCurrentToken();
+    assertEquals('token', goog.string.trim(input.value), token);
+  }
+
+  function testEditSingleInputToken() {
+    handler = new plana.ui.ac.InputHandler(input, false);
+    var changeCount = 0;
+    var key = goog.events.listen(handler,
+      plana.ui.ac.InputHandler.EventType.TEXT_CHANGED,
+      function(e) {
+        ++changeCount;
+      });
+
+    goog.testing.events.fireKeySequence(input, goog.events.KeyCodes.K);
+    assertEquals('event not fired', 1, changeCount);
+    goog.testing.events.fireKeySequence(input, goog.events.KeyCodes.A);
+    assertEquals('event not fired', 2, changeCount);
+    goog.events.unlistenByKey(key);
+  }
+
+  function testSelectRowSingleInput() {
+    handler = new plana.ui.ac.InputHandler(input, false);
+    input.value = 'hello,world';
+    var obj = new plana.ui.ac.RemoteObject({id:1, caption:'ruff'});
+    handler.selectRow(obj);
+    assertEquals('input update', 'ruff', input.value);
+  }
+
+  function testSelectRowMultiInput() {
+    handler = new plana.ui.ac.InputHandler(input, true);
+    input.value = 'hello,world';
+    var obj = new plana.ui.ac.RemoteObject({id:1, caption:'ruff'});
+    handler.selectRow(obj);
+    assertEquals('hello, ruff, ', 'hello, ruff, ', input.value);
+
+    input.value = 'hello, world,     ';
+    handler.selectRow(obj);
+    assertEquals('hello, world, ruff, ', 'hello, world, ruff, ', input.value);
+  }
+
+  function testSetSeparator() {
+    handler = new plana.ui.ac.InputHandler(input, true);
+    input.value = 'hello,world,good,day';
+    //replace , with ;
+    handler.setSeparator(';');
+    assertEquals('input didnt update 1', 'hello;world;good;day', input.value);
+    //replace ; with |
+    handler.setSeparator('|r');
+    assertEquals('input didnt update 2', 'hello|world|good|day', input.value);
+    //replace | or r with ;
+    handler.setSeparator(';');
+    assertEquals('input didnt update 3', 'hello;wo;ld;good;day', input.value);
+  }
+  </script>
+</body>
+
+</html>
