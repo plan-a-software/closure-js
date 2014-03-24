@@ -392,8 +392,29 @@ plana.ui.ac.InputHandler.prototype.onKeyUp_ = function(e) {
       case goog.events.KeyCodes.MAC_ENTER:
         break;
       default:
-        this.updateMatchedObject_(null,
-          this.getCurrentTokenIndex(this.getEntries()));
+        var entries = this.getEntries();
+        var numEntries = entries.length;
+        var numMatches = this.matchedObjects_.length;
+        var index = 0;
+        for (; index < numEntries && index < numMatches; ++index) {
+          var token = goog.string.trim(entries[index]);
+          var match = this.matchedObjects_[index];
+          if (match != null) {
+            if (goog.isString(match))
+              match = goog.string.trim(match);
+            else {
+              var obj = new plana.ui.ac.RemoteObject(match);
+              match = goog.string.trim(obj.toString());
+              obj.dispose();
+            }
+            if (token != match) {
+              this.matchedObjects_[index] = null;
+            }
+          }
+        }
+        for (; index < numMatches; ++index) {
+          this.matchedObjects_[index] = null;
+        }
         this.sendChangeNotification_();
     }
   }
