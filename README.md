@@ -48,7 +48,7 @@ An event is fired when the fulltext search completed. The event contains the sea
 
 [Here](http://plan-a-software.github.io/typeaheadsearch.html) is a demo of the class.
 
-The JSDoc for this class is [here](http://plan-a-software.github.io/docs/typeahead/index.html).
+The JSDoc for this class is [here](http://plan-a-software.github.io/docs/typeaheadsearch/index.html).
 
 ### Dependencies
 
