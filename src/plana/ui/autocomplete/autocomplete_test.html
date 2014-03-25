@@ -366,6 +366,34 @@ Use of this source code is governed by the Apache License, Version 2.0.
     var input = autocomplete.getInputHandler().getInput();
     assertEquals('input init didnt work', 'x games, ', input.value);
   }
+
+  function testGetModel() {
+    autocomplete = new plana.ui.ac.AutoComplete(new goog.Uri('fuchs'), true, null, inputId);
+    autocomplete.render(document.getElementById('container'));
+
+    var inputHandler = autocomplete.getInputHandler();
+    inputHandler.setCaseInsensitive(true);
+    var input = inputHandler.getInput();
+    
+    var obj = new plana.ui.ac.RemoteObject({id:1, caption:'Ruff'});
+    inputHandler.selectRow(obj);
+    
+    var str = input.value;
+    str += 'Hello, ruff';
+    input.value = str;
+    goog.testing.events.fireKeySequence(input, goog.events.KeyCodes.U);
+    assertEquals('model count', 1, autocomplete.getModel().length);
+    assertEquals('model not updated', 1, autocomplete.getModel()[0].id);
+    assertEquals('non match count', 1, autocomplete.getNonMatches().length);
+    assertEquals('non match error', 'Hello', autocomplete.getNonMatches()[0]);
+
+    inputHandler.setCaseInsensitive(false);
+    assertEquals('model count 2', 1, autocomplete.getModel().length);
+    assertEquals('model not updated 2', 1, autocomplete.getModel()[0].id);
+    assertEquals('non match count 2', 2, autocomplete.getNonMatches().length);
+    assertEquals('non match error 2', 'Hello', autocomplete.getNonMatches()[0]);
+    assertEquals('non match error 2', 'ruff', autocomplete.getNonMatches()[1]);
+  }
   </script>
 </body>
 
