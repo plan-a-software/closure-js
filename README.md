@@ -56,6 +56,28 @@ This class depends on
 
 * ```plana.ui.ac.Autocomplete```
 
+# plana.ui.tags.TagsInput
+
+This class provides a component to manage tags. It was inspired by the the jquery [plugin](https://github.com/timschlechter/bootstrap-tagsinput) from Tim Schlechter. It requires bootstrap css to render nicely.
+
+[Here](http://plan-a-software.github.io/tagsinput.html) is a demo of the class.
+
+The JSDoc for this class is [here](http://plan-a-software.github.io/docs/tagsinput/index.html).
+
+### Dependencies
+
+This class depends on
+
+* ```goog.events.Event```
+* ```goog.events.EventType```
+* ```goog.events.KeyHandler.EventType```
+* ```goog.fx.Animation.EventType```
+* ```goog.fx.dom.FadeIn```
+* ```goog.fx.dom.FadeOut```
+* ```goog.ui.Component```
+* ```goog.ui.ac.AutoComplete.EventType```
+* ```plana.ui.ac.AutoComplete```
+
 ==========
 
 # Licence
