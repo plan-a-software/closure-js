@@ -559,6 +559,20 @@ Copyright 2014 Plan-A Software Ltd. All Rights Reserved.
     handler.setSeparator(';');
     assertEquals('input didnt update 3', 'hello;wo;ld;good;day', input.value);
   }
+  function testCaseInsensitive() {
+    handler = new plana.ui.ac.InputHandler(input, true);
+    handler.setCaseInsensitive(true);
+    var obj = new plana.ui.ac.RemoteObject({id:1, caption:'Ruff'});
+    handler.selectRow(obj);
+    assertEquals('model not set', 1, handler.getMatchedObjects()[0].id);
+    input.value = 'ruff';
+    fireCustomKeySequence(input, goog.events.KeyCodes.U, true, true, true);
+    assertEquals('model changed', 1, handler.getMatchedObjects()[0].id);
+    handler.setCaseInsensitive(false);
+    input.value = 'RufF';
+    fireCustomKeySequence(input, goog.events.KeyCodes.U, true, true, true);
+    assertEquals('should not match', 0, handler.getMatchedObjects().length);
+  }
   </script>
 </body>
 
