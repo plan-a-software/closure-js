@@ -77,6 +77,7 @@ Use of this source code is governed by the Apache License, Version 2.0.
   var sendDelay = 0;
   var timerId = null;
   var sendInvalidResponse = false;
+  var sendTotalCount = false;
   MockXmlHttp.prototype.readyState = goog.net.XmlHttp.ReadyState.UNINITIALIZED;
 
   MockXmlHttp.prototype.status = 200;
@@ -159,6 +160,12 @@ Use of this source code is governed by the Apache License, Version 2.0.
     }
     if (sendInvalidResponse)
       return null;
+    if (sendTotalCount) {
+      return goog.json.serialize({
+        matches: matches,
+        total: matches.length
+      });
+    }
     return goog.json.serialize(matches);
   };
 
@@ -182,6 +189,7 @@ Use of this source code is governed by the Apache License, Version 2.0.
   function setUp() {
     sendDelay = 0;
     sendInvalidResponse = false;
+    sendTotalCount = false;
   }
 
   function tearDown() {
@@ -209,6 +217,7 @@ Use of this source code is governed by the Apache License, Version 2.0.
     matcher = new plana.ui.ac.RemoteObjectMatcher(uri);
     var expectedResponseType = null;
     var expectedResponse = null;
+    var expectedTotal = null;
     var lastType = null;
     var xhrListener = goog.events.listen(matcher, [
       plana.ui.ac.RemoteObjectMatcher.EventType.FAILED_REQUEST,
@@ -224,6 +233,10 @@ Use of this source code is governed by the Apache License, Version 2.0.
           assertNotNull('matches cannot be null', matches);
           assertEquals('matches returned and expected length dont match',
             expectedResponse.length, matches.length);
+          if (expectedTotal != null) {
+            assertEquals('expected total count dont match',
+              expectedTotal, e.total);
+          }
           for (var i = 0, match; match = expectedResponse[i]; ++i) {
             var smatch = matches[i];
             if (goog.isString(match)) {
@@ -284,7 +297,20 @@ Use of this source code is governed by the Apache License, Version 2.0.
       wait();
     };
 
-    cb = [testInvalidResposne, testMatches];
+    var testObjectMatches = function() {
+      sendTotalCount = true;
+      expectedResponseType = plana.ui.ac.RemoteObjectMatcher.EventType.MATCHES;
+      expectedResponse = [mockServerObjects[0]];
+      expectedTotal = 1;
+      sendInvalidResponse = false;
+      MockXmlHttp.prototype.status = 200;
+      lastType = null;
+      matcher.requestMatches('hello', 10);
+      testCase.waitForAsync('waiting for callback');
+      wait();
+    };
+
+    cb = [testInvalidResposne, testMatches, testObjectMatches];
     testServerError();
   }
 
