@@ -78,6 +78,31 @@ This class depends on
 * ```goog.ui.ac.AutoComplete.EventType```
 * ```plana.ui.ac.AutoComplete```
 
+# plana.ui.BootstrapDialog
+
+This class is a re-implementation of ```goog.ui.Dialog``` to create a bootstrap (css style) compatible modal dialog. It supports decorating existing elements.
+
+[Here](http://plan-a-software.github.io/bootstrapdialog.html) is a demo of the class.
+
+The JSDoc for this class is [here](http://plan-a-software.github.io/docs/dialog/index.html).
+
+### Dependencies
+
+This class depends on
+
+* ```goog.a11y.aria.Role```
+* ```goog.a11y.aria.State```
+* ```goog.dom.ViewportSizeMonitor```
+* ```goog.dom.classes```
+* ```goog.dom.dataset```
+* ```goog.dom.safe```
+* ```goog.events.BrowserEvent```
+* ```goog.events.EventType```
+* ```goog.events.KeyCodes```
+* ```goog.html.SafeHtml```
+* ```goog.ui.Component.EventType```
+* ```goog.ui.ModalPopup```
+
 ==========
 
 # Licence
