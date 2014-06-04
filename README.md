@@ -15,31 +15,6 @@ The JSDoc for this class is [here](http://plan-a-software.github.io/docs/autocom
 
 To get a list of matched items, use the ```getModel``` method. To get a list of tokens entered by a user that do not match suggestions from the server use ```getNonMatches```.
 
-### Dependencies
-
-* ```goog.Timer```
-* ```goog.Uri```
-* ```goog.array```
-* ```goog.a11y.aria```
-* ```goog.async.Throttle```
-* ```goog.dom.selection```
-* ```goog.events.BrowserEvent```
-* ```goog.events.Event```
-* ```goog.events.EventHandler```
-* ```goog.events.EventTarget```
-* ```goog.events.EventType```
-* ```goog.events.KeyCodes```
-* ```goog.events.KeyHandler```
-* ```goog.math.Size```
-* ```goog.net.XhrIo```
-* ```goog.net.XmlHttpFactory```
-* ```goog.string```
-* ```goog.ui.Component```
-* ```goog.ui.ac.AutoComplete```
-* ```goog.ui.ac.AutoComplete.EventType```
-* ```goog.ui.ac.Renderer```
-* ```goog.ui.ac.RenderOptions```
-
 # plana.ui.TypeaheadSearch
 
 This class extends the autocomplete class to provide an additional search button that can be used to trigger a fulltext search by adding the 'fulltextsearch' parameter to server requests.
@@ -50,12 +25,6 @@ An event is fired when the fulltext search completed. The event contains the sea
 
 The JSDoc for this class is [here](http://plan-a-software.github.io/docs/typeaheadsearch/index.html).
 
-### Dependencies
-
-This class depends on
-
-* ```plana.ui.ac.Autocomplete```
-
 # plana.ui.tags.TagsInput
 
 This class provides a component to manage tags. It was inspired by the the jquery [plugin](https://github.com/timschlechter/bootstrap-tagsinput) from Tim Schlechter. It requires bootstrap css to render nicely.
@@ -64,20 +33,6 @@ This class provides a component to manage tags. It was inspired by the the jquer
 
 The JSDoc for this class is [here](http://plan-a-software.github.io/docs/tagsinput/index.html).
 
-### Dependencies
-
-This class depends on
-
-* ```goog.events.Event```
-* ```goog.events.EventType```
-* ```goog.events.KeyHandler.EventType```
-* ```goog.fx.Animation.EventType```
-* ```goog.fx.dom.FadeIn```
-* ```goog.fx.dom.FadeOut```
-* ```goog.ui.Component```
-* ```goog.ui.ac.AutoComplete.EventType```
-* ```plana.ui.ac.AutoComplete```
-
 # plana.ui.BootstrapDialog
 
 This class is a re-implementation of ```goog.ui.Dialog``` to create a bootstrap (css style) compatible modal dialog. It supports decorating existing elements.
@@ -85,23 +40,6 @@ This class is a re-implementation of ```goog.ui.Dialog``` to create a bootstrap 
 [Here](http://plan-a-software.github.io/bootstrapdialog.html) is a demo of the class.
 
 The JSDoc for this class is [here](http://plan-a-software.github.io/docs/dialog/index.html).
-
-### Dependencies
-
-This class depends on
-
-* ```goog.a11y.aria.Role```
-* ```goog.a11y.aria.State```
-* ```goog.dom.ViewportSizeMonitor```
-* ```goog.dom.classes```
-* ```goog.dom.dataset```
-* ```goog.dom.safe```
-* ```goog.events.BrowserEvent```
-* ```goog.events.EventType```
-* ```goog.events.KeyCodes```
-* ```goog.html.SafeHtml```
-* ```goog.ui.Component.EventType```
-* ```goog.ui.ModalPopup```
 
 ==========
 
